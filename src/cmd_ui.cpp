@@ -39,6 +39,7 @@ CmdUI::CmdUI()
 	, hasGpuMetrics(false)
 	, cpuMetrics{}
 	, gpuMetrics{}
+	, isDialogOpen(false)
 {
 }
 
@@ -149,6 +150,15 @@ void CmdUI::drawFrame()
 	int cpuColStart = COL_START + colWidth + 3;
 
 	clickRegions.clear();
+
+	// Clear the entire interior of the console screen first to prevent any layout artifacts
+	DWORD written;
+	for (int r = 1; r < consoleHeight - 1; r++) {
+		COORD pos = { 1, (SHORT)r };
+		FillConsoleOutputCharacterA(hOut, ' ', consoleWidth - 2, pos, &written);
+		FillConsoleOutputAttribute(hOut, COLOR_LABEL, consoleWidth - 2, pos, &written);
+	}
+
 	drawBox(0, 0, consoleWidth, consoleHeight);
 	drawTitle();
 	drawHorizontalLine(3, 0, consoleWidth - 1);
@@ -161,7 +171,6 @@ void CmdUI::drawFrame()
 	drawHorizontalLine(ROW_RESULTS_START - 1, 0, consoleWidth - 1);
 
 	// Results headers
-	DWORD written;
 	std::string gpuTitle = " RESULTS – GPU";
 	COORD posGPU = { (SHORT)COL_START, (SHORT)ROW_RESULTS_START };
 	WriteConsoleOutputCharacterA(hOut, gpuTitle.c_str(), (DWORD)gpuTitle.size(), posGPU, &written);
@@ -189,6 +198,10 @@ void CmdUI::drawFrame()
 
 	// Status bar at bottom
 	drawStatusBar();
+
+	if (isDialogOpen) {
+		drawDialog();
+	}
 }
 
 void CmdUI::drawTitle()
@@ -322,6 +335,81 @@ void CmdUI::drawStatusBar()
 	COORD pos = { (SHORT)COL_START, (SHORT)row };
 	WriteConsoleOutputCharacterA(hOut, statusText.c_str(), (DWORD)statusText.size(), pos, &written);
 	FillConsoleOutputAttribute(hOut, COLOR_STATUSBAR, (DWORD)statusText.size(), pos, &written);
+}
+
+void CmdUI::drawDialog()
+{
+	int dlgWidth = 76;
+	int dlgHeight = 7;
+	int dlgX = (consoleWidth - dlgWidth) / 2;
+	int dlgY = (consoleHeight - dlgHeight) / 2;
+	DWORD written;
+
+	// Fill dialog background with spaces
+	for (int r = dlgY; r < dlgY + dlgHeight; r++) {
+		COORD pos = { (SHORT)dlgX, (SHORT)r };
+		FillConsoleOutputCharacterA(hOut, ' ', dlgWidth, pos, &written);
+		FillConsoleOutputAttribute(hOut, COLOR_INPUT_INACTIVE, dlgWidth, pos, &written);
+	}
+
+	// Draw borders
+	// Top border
+	std::string topLine(dlgWidth, '-');
+	topLine[0] = '+';
+	topLine[dlgWidth - 1] = '+';
+	COORD posTop = { (SHORT)dlgX, (SHORT)dlgY };
+	WriteConsoleOutputCharacterA(hOut, topLine.c_str(), (DWORD)topLine.size(), posTop, &written);
+	FillConsoleOutputAttribute(hOut, COLOR_BORDER, (DWORD)topLine.size(), posTop, &written);
+
+	// Side borders
+	for (int r = dlgY + 1; r < dlgY + dlgHeight - 1; r++) {
+		COORD posL = { (SHORT)dlgX, (SHORT)r };
+		WriteConsoleOutputCharacterA(hOut, "|", 1, posL, &written);
+		FillConsoleOutputAttribute(hOut, COLOR_BORDER, 1, posL, &written);
+
+		COORD posR = { (SHORT)(dlgX + dlgWidth - 1), (SHORT)r };
+		WriteConsoleOutputCharacterA(hOut, "|", 1, posR, &written);
+		FillConsoleOutputAttribute(hOut, COLOR_BORDER, 1, posR, &written);
+	}
+
+	// Bottom border
+	std::string botLine(dlgWidth, '-');
+	botLine[0] = '+';
+	botLine[dlgWidth - 1] = '+';
+	COORD posBot = { (SHORT)dlgX, (SHORT)(dlgY + dlgHeight - 1) };
+	WriteConsoleOutputCharacterA(hOut, botLine.c_str(), (DWORD)botLine.size(), posBot, &written);
+	FillConsoleOutputAttribute(hOut, COLOR_BORDER, (DWORD)botLine.size(), posBot, &written);
+
+	// Title centered on top border
+	std::string title = " Hash Details ";
+	int titleX = dlgX + (dlgWidth - (int)title.size()) / 2;
+	COORD posTitle = { (SHORT)titleX, (SHORT)dlgY };
+	WriteConsoleOutputCharacterA(hOut, title.c_str(), (DWORD)title.size(), posTitle, &written);
+	FillConsoleOutputAttribute(hOut, COLOR_SECTION_HEADER, (DWORD)title.size(), posTitle, &written);
+
+	// Display full 64-character hash centered on row dlgY + 2
+	int hashX = dlgX + (dlgWidth - 64) / 2;
+	COORD posHash = { (SHORT)hashX, (SHORT)(dlgY + 2) };
+	WriteConsoleOutputCharacterA(hOut, dialogHashValue.c_str(), 64, posHash, &written);
+	FillConsoleOutputAttribute(hOut, COLOR_HASH, 64, posHash, &written);
+
+	// Draw copy & close buttons centered on row dlgY + 4
+	std::string btnCopy = "[ COPY HASH ]";
+	std::string btnClose = "[ CLOSE ]";
+	int buttonsWidth = (int)btnCopy.size() + 4 + (int)btnClose.size();
+	int btnStartX = dlgX + (dlgWidth - buttonsWidth) / 2;
+	int btnY = dlgY + 4;
+
+	COORD posCopy = { (SHORT)btnStartX, (SHORT)btnY };
+	WriteConsoleOutputCharacterA(hOut, btnCopy.c_str(), (DWORD)btnCopy.size(), posCopy, &written);
+	FillConsoleOutputAttribute(hOut, COLOR_BUTTON, (DWORD)btnCopy.size(), posCopy, &written);
+	registerClickRegion(btnStartX, btnY, (int)btnCopy.size(), 1, REGION_DIALOG_COPY, "Copy Hash");
+
+	int closeX = btnStartX + (int)btnCopy.size() + 4;
+	COORD posClose = { (SHORT)closeX, (SHORT)btnY };
+	WriteConsoleOutputCharacterA(hOut, btnClose.c_str(), (DWORD)btnClose.size(), posClose, &written);
+	FillConsoleOutputAttribute(hOut, COLOR_BUTTON_CLEAR, (DWORD)btnClose.size(), posClose, &written);
+	registerClickRegion(closeX, btnY, (int)btnClose.size(), 1, REGION_DIALOG_CLOSE, "Close Dialog");
 }
 
 void CmdUI::drawResultsPanel(const GPUMetrics& metrics, bool isGPU)
@@ -474,6 +562,7 @@ void CmdUI::drawResultColumn(const GPUMetrics& metrics, int colStart, bool isGPU
 		COORD hPos = { (SHORT)(colStart + (int)label.size()), (SHORT)startRow };
 		WriteConsoleOutputCharacterA(hOut, hashVal.c_str(), (DWORD)hashVal.size(), hPos, &written);
 		FillConsoleOutputAttribute(hOut, COLOR_HASH, (DWORD)hashVal.size(), hPos, &written);
+		registerClickRegion(colStart, startRow, colWidth, 1, REGION_SAMPLE_HASH, sample.second);
 		startRow++;
 	}
 
@@ -664,9 +753,42 @@ void CmdUI::runEventLoop(UIEventCallback callback)
 
 void CmdUI::handleMouseClick(int x, int y, UIEventCallback& callback)
 {
-	int regionId = hitTestRegion(x, y);
+	ClickRegion clickedRegion;
+	bool found = false;
+	for (const auto& region : clickRegions) {
+		if (x >= region.bounds.Left && x <= region.bounds.Right &&
+			y >= region.bounds.Top && y <= region.bounds.Bottom) {
+			clickedRegion = region;
+			found = true;
+			break;
+		}
+	}
 
-	switch (regionId) {
+	if (isDialogOpen) {
+		if (found) {
+			if (clickedRegion.id == REGION_DIALOG_COPY) {
+				copyToClipboard(dialogHashValue);
+			} else if (clickedRegion.id == REGION_DIALOG_CLOSE) {
+				isDialogOpen = false;
+				drawFrame();
+			}
+		} else {
+			// Clicked outside dialog bounds -> close dialog
+			int dlgWidth = 76;
+			int dlgHeight = 7;
+			int dlgX = (consoleWidth - dlgWidth) / 2;
+			int dlgY = (consoleHeight - dlgHeight) / 2;
+			if (x < dlgX || x >= dlgX + dlgWidth || y < dlgY || y >= dlgY + dlgHeight) {
+				isDialogOpen = false;
+				drawFrame();
+			}
+		}
+		return;
+	}
+
+	if (!found) return;
+
+	switch (clickedRegion.id) {
 		case REGION_RUN_BUTTON:
 			lastComputeMode = "GPU";
 			if (callback) callback(UIEvent::RUN_CLICKED);
@@ -693,6 +815,12 @@ void CmdUI::handleMouseClick(int x, int y, UIEventCallback& callback)
 			drawBatchInput();
 			break;
 
+		case REGION_SAMPLE_HASH:
+			isDialogOpen = true;
+			dialogHashValue = clickedRegion.label;
+			drawFrame();
+			break;
+
 		default:
 			break;
 	}
@@ -702,6 +830,14 @@ void CmdUI::handleKeyPress(KEY_EVENT_RECORD keyEvent, UIEventCallback& callback)
 {
 	char ch = keyEvent.uChar.AsciiChar;
 	WORD vk = keyEvent.wVirtualKeyCode;
+
+	if (isDialogOpen) {
+		if (vk == VK_ESCAPE || vk == VK_RETURN) {
+			isDialogOpen = false;
+			drawFrame();
+		}
+		return;
+	}
 
 	// ESC to quit
 	if (vk == VK_ESCAPE) {

@@ -102,6 +102,13 @@ private:
 	bool hasCpuMetrics;
 	bool hasGpuMetrics;
 
+	// Dialog state
+	bool isDialogOpen;
+	std::string dialogHashValue;
+
+	// Helper to draw the modal dialog
+	void drawDialog();
+
 	// Helper for drawing a column of results
 	void drawResultColumn(const GPUMetrics& metrics, int colStart, bool isGPU);
 
@@ -148,6 +155,9 @@ private:
 	static const int REGION_CLEAR_BUTTON = 5;
 	static const int REGION_TEXTBOX_TEXT = 4;
 	static const int REGION_TEXTBOX_BATCH = 6;
+	static const int REGION_DIALOG_COPY = 8;
+	static const int REGION_DIALOG_CLOSE = 9;
+	static const int REGION_SAMPLE_HASH = 20;
 
 	// Color scheme
 	static const WORD COLOR_BORDER = FOREGROUND_GREEN | FOREGROUND_INTENSITY;
