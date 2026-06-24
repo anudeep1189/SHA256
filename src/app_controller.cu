@@ -39,7 +39,7 @@ void AppController::run()
 	running = true;
 
 	// Initialize UI
-	ui.initialize(110, 42);
+	ui.initialize(170, 42);
 	ui.setGPUInfo(gpuInfo);
 	ui.drawFrame();
 
@@ -75,7 +75,7 @@ void AppController::onUIEvent(UIEvent event)
 void AppController::onRunHashGPU()
 {
 	// 1. Show processing status
-	ui.drawStatusMessage("Processing... Please wait.", false);
+	ui.drawStatusMessage("Processing... Please wait.", true, false);
 
 	// 2. Get text input
 	std::string text = ui.getTextInput();
@@ -83,7 +83,7 @@ void AppController::onRunHashGPU()
 		GPUMetrics errMetrics = {};
 		errMetrics.valid = false;
 		errMetrics.errorMessage = "Text input is empty. Please enter text to hash.";
-		ui.drawResultsPanel(errMetrics);
+		ui.drawResultsPanel(errMetrics, true);
 		return;
 	}
 	std::vector<BYTE> inputData = inputHandler.readFromText(text);
@@ -95,7 +95,7 @@ void AppController::onRunHashGPU()
 		GPUMetrics errMetrics = {};
 		errMetrics.valid = false;
 		errMetrics.errorMessage = "Batch size must be greater than 0.";
-		ui.drawResultsPanel(errMetrics);
+		ui.drawResultsPanel(errMetrics, true);
 		return;
 	}
 
@@ -109,7 +109,7 @@ void AppController::onRunHashGPU()
 		if (maxSafeBatch < 1) maxSafeBatch = 1;
 		if (n_batch > maxSafeBatch) {
 			n_batch = maxSafeBatch;
-			ui.drawStatusMessage("Clamped batch to " + std::to_string(n_batch) + " (GPU memory limit).", false);
+			ui.drawStatusMessage("Clamped batch to " + std::to_string(n_batch) + " (GPU memory limit).", true, false);
 		}
 	}
 
@@ -120,7 +120,7 @@ void AppController::onRunHashGPU()
 		GPUMetrics errMetrics = {};
 		errMetrics.valid = false;
 		errMetrics.errorMessage = "Failed to allocate input buffer.";
-		ui.drawResultsPanel(errMetrics);
+		ui.drawResultsPanel(errMetrics, true);
 		return;
 	}
 	memcpy(inBuffer, inputData.data(), inlen);
@@ -133,7 +133,7 @@ void AppController::onRunHashGPU()
 		GPUMetrics errMetrics = {};
 		errMetrics.valid = false;
 		errMetrics.errorMessage = "Failed to allocate output buffer.";
-		ui.drawResultsPanel(errMetrics);
+		ui.drawResultsPanel(errMetrics, true);
 		return;
 	}
 	memset(outBuffer, 0, totalOutputSize);
@@ -184,7 +184,7 @@ void AppController::onRunHashGPU()
 		GPUMetrics errMetrics = {};
 		errMetrics.valid = false;
 		errMetrics.errorMessage = std::string("CUDA error: ") + cudaGetErrorString(cudaErr);
-		ui.drawResultsPanel(errMetrics);
+		ui.drawResultsPanel(errMetrics, true);
 		return;
 	}
 
@@ -218,7 +218,7 @@ void AppController::onRunHashGPU()
 	result.batchHashTimeMs = (double)batchTimeMs;
 
 	// 12. Display results
-	ui.drawResultsPanel(result);
+	ui.drawResultsPanel(result, true);
 
 	// Cleanup
 	free(inBuffer);
@@ -228,7 +228,7 @@ void AppController::onRunHashGPU()
 void AppController::onRunHashCPU()
 {
 	// 1. Show processing status
-	ui.drawStatusMessage("Processing on CPU... Please wait.", false);
+	ui.drawStatusMessage("Processing on CPU... Please wait.", false, false);
 
 	// 2. Get text input
 	std::string text = ui.getTextInput();
@@ -236,7 +236,7 @@ void AppController::onRunHashCPU()
 		GPUMetrics errMetrics = {};
 		errMetrics.valid = false;
 		errMetrics.errorMessage = "Text input is empty. Please enter text to hash.";
-		ui.drawResultsPanel(errMetrics);
+		ui.drawResultsPanel(errMetrics, false);
 		return;
 	}
 	std::vector<BYTE> inputData = inputHandler.readFromText(text);
@@ -248,7 +248,7 @@ void AppController::onRunHashCPU()
 		GPUMetrics errMetrics = {};
 		errMetrics.valid = false;
 		errMetrics.errorMessage = "Batch size must be greater than 0.";
-		ui.drawResultsPanel(errMetrics);
+		ui.drawResultsPanel(errMetrics, false);
 		return;
 	}
 
@@ -259,7 +259,7 @@ void AppController::onRunHashCPU()
 		GPUMetrics errMetrics = {};
 		errMetrics.valid = false;
 		errMetrics.errorMessage = "Failed to allocate input buffer.";
-		ui.drawResultsPanel(errMetrics);
+		ui.drawResultsPanel(errMetrics, false);
 		return;
 	}
 	memcpy(inBuffer, inputData.data(), inlen);
@@ -272,7 +272,7 @@ void AppController::onRunHashCPU()
 		GPUMetrics errMetrics = {};
 		errMetrics.valid = false;
 		errMetrics.errorMessage = "Failed to allocate output buffer.";
-		ui.drawResultsPanel(errMetrics);
+		ui.drawResultsPanel(errMetrics, false);
 		return;
 	}
 	memset(outBuffer, 0, totalOutputSize);
@@ -290,7 +290,7 @@ void AppController::onRunHashCPU()
 		GPUMetrics errMetrics = {};
 		errMetrics.valid = false;
 		errMetrics.errorMessage = "CPU SHA256 batch processing failed.";
-		ui.drawResultsPanel(errMetrics);
+		ui.drawResultsPanel(errMetrics, false);
 		return;
 	}
 
@@ -343,7 +343,7 @@ void AppController::onRunHashCPU()
 	result.errorMessage = "";
 
 	// 10. Display results
-	ui.drawResultsPanel(result);
+	ui.drawResultsPanel(result, false);
 
 	// Cleanup
 	free(inBuffer);

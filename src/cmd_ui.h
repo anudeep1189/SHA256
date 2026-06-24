@@ -51,8 +51,8 @@ public:
 	void drawRunButtons();
 	void drawRunCPUButton();
 	void drawClearButton();
-	void drawResultsPanel(const GPUMetrics& metrics);
-	void drawStatusMessage(const std::string& msg, bool isError = false);
+	void drawResultsPanel(const GPUMetrics& metrics, bool isGPU);
+	void drawStatusMessage(const std::string& msg, bool isGPU, bool isError = false);
 	void drawStatusBar();
 
 	// Clear results area
@@ -95,6 +95,18 @@ private:
 
 	// Last compute mode ("GPU" or "CPU") for results title
 	std::string lastComputeMode;
+
+	// Side-by-side results metrics
+	GPUMetrics cpuMetrics;
+	GPUMetrics gpuMetrics;
+	bool hasCpuMetrics;
+	bool hasGpuMetrics;
+
+	// Helper for drawing a column of results
+	void drawResultColumn(const GPUMetrics& metrics, int colStart, bool isGPU);
+
+	// Update consoleWidth and consoleHeight dynamically based on the actual screen buffer info
+	void updateDimensions();
 
 	// Color helpers
 	void setColor(WORD color);

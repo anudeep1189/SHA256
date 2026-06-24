@@ -13,12 +13,16 @@
 CmdUI::CmdUI()
 	: hOut(INVALID_HANDLE_VALUE)
 	, hIn(INVALID_HANDLE_VALUE)
-	, consoleWidth(110)
+	, consoleWidth(170)
 	, consoleHeight(42)
 	, batchSizeStr("100000")
 	, activeTextbox(0)
 	, resultsScrollOffset(0)
 	, lastComputeMode("GPU")
+	, hasCpuMetrics(false)
+	, hasGpuMetrics(false)
+	, cpuMetrics{}
+	, gpuMetrics{}
 {
 }
 
@@ -33,20 +37,32 @@ CmdUI::~CmdUI()
 
 void CmdUI::initialize(int width, int height)
 {
-	consoleWidth = width;
-	consoleHeight = height;
-
 	hOut = GetStdHandle(STD_OUTPUT_HANDLE);
 	hIn = GetStdHandle(STD_INPUT_HANDLE);
 
 	// Set console output to UTF-8 for Unicode box-drawing characters
 	SetConsoleOutputCP(65001);
 
+	// Query actual size of terminal window or default to width
+	CONSOLE_SCREEN_BUFFER_INFO csbi;
+	int actualWidth = width;
+	if (GetConsoleScreenBufferInfo(hOut, &csbi)) {
+		int winWidth = csbi.srWindow.Right - csbi.srWindow.Left + 1;
+		if (winWidth > 110) {
+			actualWidth = winWidth;
+		} else {
+			actualWidth = 110;
+		}
+	}
+
+	consoleWidth = actualWidth;
+	consoleHeight = height;
+
 	// Set console buffer and window size
-	COORD bufferSize = { (SHORT)width, (SHORT)height };
+	COORD bufferSize = { (SHORT)consoleWidth, (SHORT)consoleHeight };
 	SetConsoleScreenBufferSize(hOut, bufferSize);
 
-	SMALL_RECT windowSize = { 0, 0, (SHORT)(width - 1), (SHORT)(height - 1) };
+	SMALL_RECT windowSize = { 0, 0, (SHORT)(consoleWidth - 1), (SHORT)(consoleHeight - 1) };
 	SetConsoleWindowInfo(hOut, TRUE, &windowSize);
 
 	// Enable mouse and window input
@@ -76,8 +92,17 @@ void CmdUI::initialize(int width, int height)
 	// Clear screen
 	DWORD written;
 	COORD origin = { 0, 0 };
-	FillConsoleOutputCharacterA(hOut, ' ', width * height, origin, &written);
-	FillConsoleOutputAttribute(hOut, COLOR_LABEL, width * height, origin, &written);
+	FillConsoleOutputCharacterA(hOut, ' ', consoleWidth * consoleHeight, origin, &written);
+	FillConsoleOutputAttribute(hOut, COLOR_LABEL, consoleWidth * consoleHeight, origin, &written);
+}
+
+void CmdUI::updateDimensions()
+{
+	CONSOLE_SCREEN_BUFFER_INFO csbi;
+	if (GetConsoleScreenBufferInfo(hOut, &csbi)) {
+		consoleWidth = csbi.dwSize.X >= 110 ? csbi.dwSize.X : 110;
+		consoleHeight = csbi.dwSize.Y;
+	}
 }
 
 // ======================================================
@@ -86,6 +111,11 @@ void CmdUI::initialize(int width, int height)
 
 void CmdUI::drawFrame()
 {
+	updateDimensions();
+	int colWidth = (consoleWidth - 6) / 2;
+	int sepCol = COL_START + colWidth + 1;
+	int cpuColStart = COL_START + colWidth + 3;
+
 	clickRegions.clear();
 	drawBox(0, 0, consoleWidth, consoleHeight);
 	drawTitle();
@@ -98,12 +128,32 @@ void CmdUI::drawFrame()
 	drawClearButton();
 	drawHorizontalLine(ROW_RESULTS_START - 1, 0, consoleWidth - 1);
 
-	// Results header
+	// Results headers
 	DWORD written;
-	std::string resultsTitle = " RESULTS – " + lastComputeMode;
-	COORD pos = { (SHORT)COL_START, (SHORT)ROW_RESULTS_START };
-	WriteConsoleOutputCharacterA(hOut, resultsTitle.c_str(), (DWORD)resultsTitle.size(), pos, &written);
-	FillConsoleOutputAttribute(hOut, COLOR_SECTION_HEADER, (DWORD)resultsTitle.size(), pos, &written);
+	std::string gpuTitle = " RESULTS – GPU";
+	COORD posGPU = { (SHORT)COL_START, (SHORT)ROW_RESULTS_START };
+	WriteConsoleOutputCharacterA(hOut, gpuTitle.c_str(), (DWORD)gpuTitle.size(), posGPU, &written);
+	FillConsoleOutputAttribute(hOut, COLOR_SECTION_HEADER, (DWORD)gpuTitle.size(), posGPU, &written);
+
+	std::string cpuTitle = " RESULTS – CPU";
+	COORD posCPU = { (SHORT)cpuColStart, (SHORT)ROW_RESULTS_START };
+	WriteConsoleOutputCharacterA(hOut, cpuTitle.c_str(), (DWORD)cpuTitle.size(), posCPU, &written);
+	FillConsoleOutputAttribute(hOut, COLOR_SECTION_HEADER, (DWORD)cpuTitle.size(), posCPU, &written);
+
+	// Draw vertical separator in the results area
+	for (int r = ROW_RESULTS_START; r < consoleHeight - 2; r++) {
+		COORD posSep = { (SHORT)sepCol, (SHORT)r };
+		WriteConsoleOutputCharacterA(hOut, "|", 1, posSep, &written);
+		FillConsoleOutputAttribute(hOut, COLOR_BORDER, 1, posSep, &written);
+	}
+
+	// Redraw existing results if present
+	if (hasGpuMetrics) {
+		drawResultColumn(gpuMetrics, COL_START, true);
+	}
+	if (hasCpuMetrics) {
+		drawResultColumn(cpuMetrics, cpuColStart, false);
+	}
 
 	// Status bar at bottom
 	drawStatusBar();
@@ -242,27 +292,80 @@ void CmdUI::drawStatusBar()
 	FillConsoleOutputAttribute(hOut, COLOR_STATUSBAR, (DWORD)statusText.size(), pos, &written);
 }
 
-void CmdUI::drawResultsPanel(const GPUMetrics& metrics)
+void CmdUI::drawResultsPanel(const GPUMetrics& metrics, bool isGPU)
 {
-	resultsLines.clear();
+	updateDimensions();
+	int colWidth = (consoleWidth - 6) / 2;
+
+	if (isGPU) {
+		gpuMetrics = metrics;
+		hasGpuMetrics = true;
+	} else {
+		cpuMetrics = metrics;
+		hasCpuMetrics = true;
+	}
+
+	// 1. Redraw GPU column (left)
+	if (hasGpuMetrics) {
+		drawResultColumn(gpuMetrics, COL_START, true);
+	} else {
+		// Clear GPU column if no metrics
+		int startRow = ROW_RESULTS_START + 1;
+		for (int r = startRow; r < consoleHeight - 2; r++) {
+			clearLine(r, COL_START, COL_START + colWidth - 1);
+		}
+	}
+
+	// 2. Redraw vertical separator
+	DWORD written;
+	int sepCol = COL_START + colWidth + 1;
+	for (int r = ROW_RESULTS_START; r < consoleHeight - 2; r++) {
+		COORD posSep = { (SHORT)sepCol, (SHORT)r };
+		WriteConsoleOutputCharacterA(hOut, "|", 1, posSep, &written);
+		FillConsoleOutputAttribute(hOut, COLOR_BORDER, 1, posSep, &written);
+	}
+
+	// 3. Redraw CPU column (right)
+	int cpuColStart = COL_START + colWidth + 3;
+	if (hasCpuMetrics) {
+		drawResultColumn(cpuMetrics, cpuColStart, false);
+	} else {
+		// Clear CPU column if no metrics
+		int startRow = ROW_RESULTS_START + 1;
+		for (int r = startRow; r < consoleHeight - 2; r++) {
+			clearLine(r, cpuColStart, cpuColStart + colWidth - 1);
+		}
+	}
+
+	// Redraw status bar
+	drawStatusBar();
+}
+
+void CmdUI::drawResultColumn(const GPUMetrics& metrics, int colStart, bool isGPU)
+{
+	updateDimensions();
+	int colWidth = (consoleWidth - 6) / 2;
 	int startRow = ROW_RESULTS_START + 1;
 	DWORD written;
 
-	// Clear results area (leave status bar intact)
+	// Clear this specific column's area
 	for (int r = startRow; r < consoleHeight - 3; r++) {
-		clearLine(r, COL_START, consoleWidth - 2);
+		clearLine(r, colStart, colStart + colWidth - 1);
 	}
 
 	if (!metrics.valid) {
+		if (metrics.errorMessage.empty()) {
+			return;
+		}
 		// Show error - wrap across multiple lines if needed
 		std::string errMsg = " Error: " + metrics.errorMessage;
-		int maxLen = consoleWidth - COL_START - 2;
+		int maxLen = colWidth - 1;
 		int row = startRow + 1;
 		int maxRow = consoleHeight - 4;
 		while (!errMsg.empty() && row <= maxRow) {
 			std::string line = errMsg.substr(0, maxLen);
 			errMsg = (int)errMsg.size() > maxLen ? errMsg.substr(maxLen) : "";
-			COORD pos = { (SHORT)COL_START, (SHORT)row };
+			COORD pos = { (SHORT)colStart, (SHORT)row };
 			WriteConsoleOutputCharacterA(hOut, line.c_str(), (DWORD)line.size(), pos, &written);
 			FillConsoleOutputAttribute(hOut, COLOR_ERROR, (DWORD)line.size(), pos, &written);
 			row++;
@@ -270,16 +373,15 @@ void CmdUI::drawResultsPanel(const GPUMetrics& metrics)
 		return;
 	}
 
-	int maxLen = consoleWidth - COL_START - 2;
 	COORD pos;
 
 	// Hashes computed summary
 	std::string batchLabel = " Hashes Computed: ";
 	std::string batchValue = std::to_string(metrics.batchSize);
-	pos = { (SHORT)COL_START, (SHORT)startRow };
+	pos = { (SHORT)colStart, (SHORT)startRow };
 	WriteConsoleOutputCharacterA(hOut, batchLabel.c_str(), (DWORD)batchLabel.size(), pos, &written);
 	FillConsoleOutputAttribute(hOut, COLOR_RESULT_LABEL, (DWORD)batchLabel.size(), pos, &written);
-	COORD bvPos = { (SHORT)(COL_START + (int)batchLabel.size()), (SHORT)startRow };
+	COORD bvPos = { (SHORT)(colStart + (int)batchLabel.size()), (SHORT)startRow };
 	WriteConsoleOutputCharacterA(hOut, batchValue.c_str(), (DWORD)batchValue.size(), bvPos, &written);
 	FillConsoleOutputAttribute(hOut, COLOR_RESULT_VALUE, (DWORD)batchValue.size(), bvPos, &written);
 
@@ -295,12 +397,21 @@ void CmdUI::drawResultsPanel(const GPUMetrics& metrics)
 			while ((int)label.size() < 17) label += " ";
 		}
 		std::string hashVal = sample.second;
-		int hashMaxLen = maxLen - (int)label.size();
-		if ((int)hashVal.size() > hashMaxLen) hashVal = hashVal.substr(0, hashMaxLen);
-		pos = { (SHORT)COL_START, (SHORT)startRow };
+		
+		// Responsive hash truncation to prevent text wrap on narrower terminals
+		int hashMaxLen = colWidth - (int)label.size();
+		if ((int)hashVal.size() > hashMaxLen) {
+			if (hashMaxLen > 15) {
+				hashVal = hashVal.substr(0, hashMaxLen - 11) + "..." + hashVal.substr(hashVal.size() - 8);
+			} else {
+				hashVal = hashVal.substr(0, hashMaxLen);
+			}
+		}
+
+		pos = { (SHORT)colStart, (SHORT)startRow };
 		WriteConsoleOutputCharacterA(hOut, label.c_str(), (DWORD)label.size(), pos, &written);
 		FillConsoleOutputAttribute(hOut, COLOR_RESULT_LABEL, (DWORD)label.size(), pos, &written);
-		COORD hPos = { (SHORT)(COL_START + (int)label.size()), (SHORT)startRow };
+		COORD hPos = { (SHORT)(colStart + (int)label.size()), (SHORT)startRow };
 		WriteConsoleOutputCharacterA(hOut, hashVal.c_str(), (DWORD)hashVal.size(), hPos, &written);
 		FillConsoleOutputAttribute(hOut, COLOR_HASH, (DWORD)hashVal.size(), hPos, &written);
 		startRow++;
@@ -309,33 +420,35 @@ void CmdUI::drawResultsPanel(const GPUMetrics& metrics)
 	// Parallel Advantage separator
 	startRow++;
 	std::string advSep = " --- Parallel Advantage ";
-	while ((int)advSep.size() < consoleWidth - 6) advSep += "-";
-	pos = { (SHORT)COL_START, (SHORT)startRow };
+	while ((int)advSep.size() < colWidth) advSep += "-";
+	pos = { (SHORT)colStart, (SHORT)startRow };
 	WriteConsoleOutputCharacterA(hOut, advSep.c_str(), (DWORD)advSep.size(), pos, &written);
 	FillConsoleOutputAttribute(hOut, COLOR_SECTION_HEADER, (DWORD)advSep.size(), pos, &written);
 
 	startRow++;
 	std::stringstream ssSingle;
-	ssSingle << std::fixed << std::setprecision(2) << metrics.singleHashTimeMs;
-	std::string singleLabel = "   Single hash (batch=1):      ";
+	ssSingle << std::fixed << std::setprecision(5) << metrics.singleHashTimeMs;
+	std::string singleLabel = "   Single hash (batch=1): ";
+	while ((int)singleLabel.size() < 26) singleLabel += " ";
 	std::string singleValue = ssSingle.str() + " ms";
-	pos = { (SHORT)COL_START, (SHORT)startRow };
+	pos = { (SHORT)colStart, (SHORT)startRow };
 	WriteConsoleOutputCharacterA(hOut, singleLabel.c_str(), (DWORD)singleLabel.size(), pos, &written);
 	FillConsoleOutputAttribute(hOut, COLOR_RESULT_LABEL, (DWORD)singleLabel.size(), pos, &written);
-	COORD svPos = { (SHORT)(COL_START + (int)singleLabel.size()), (SHORT)startRow };
+	COORD svPos = { (SHORT)(colStart + (int)singleLabel.size()), (SHORT)startRow };
 	WriteConsoleOutputCharacterA(hOut, singleValue.c_str(), (DWORD)singleValue.size(), svPos, &written);
 	FillConsoleOutputAttribute(hOut, COLOR_RESULT_VALUE, (DWORD)singleValue.size(), svPos, &written);
 
 	startRow++;
 	std::stringstream ssBatch;
-	ssBatch << std::fixed << std::setprecision(2) << metrics.batchHashTimeMs;
-	std::string batchLabel2 = "   Full batch  (batch=" + std::to_string(metrics.batchSize) + "): ";
-	while ((int)batchLabel2.size() < 31) batchLabel2 += " ";
+	ssBatch << std::fixed << std::setprecision(5) << metrics.batchHashTimeMs;
+	std::string batchLabel2 = "   Batch (n=" + std::to_string(metrics.batchSize) + "): ";
+	if (batchLabel2.size() > 29) batchLabel2 = batchLabel2.substr(0, 29);
+	while ((int)batchLabel2.size() < 29) batchLabel2 += " ";
 	std::string batchValue2 = ssBatch.str() + " ms";
-	pos = { (SHORT)COL_START, (SHORT)startRow };
+	pos = { (SHORT)colStart, (SHORT)startRow };
 	WriteConsoleOutputCharacterA(hOut, batchLabel2.c_str(), (DWORD)batchLabel2.size(), pos, &written);
 	FillConsoleOutputAttribute(hOut, COLOR_RESULT_LABEL, (DWORD)batchLabel2.size(), pos, &written);
-	COORD bv2Pos = { (SHORT)(COL_START + (int)batchLabel2.size()), (SHORT)startRow };
+	COORD bv2Pos = { (SHORT)(colStart + (int)batchLabel2.size()), (SHORT)startRow };
 	WriteConsoleOutputCharacterA(hOut, batchValue2.c_str(), (DWORD)batchValue2.size(), bv2Pos, &written);
 	FillConsoleOutputAttribute(hOut, COLOR_RESULT_VALUE, (DWORD)batchValue2.size(), bv2Pos, &written);
 
@@ -344,60 +457,65 @@ void CmdUI::drawResultsPanel(const GPUMetrics& metrics)
 	std::stringstream ssRatio;
 	ssRatio << std::fixed << std::setprecision(2) << ratio;
 	std::string ratioLine = "   Ratio: " + std::to_string(metrics.batchSize) + " hashes in only " + ssRatio.str() + "x the time";
-	pos = { (SHORT)COL_START, (SHORT)startRow };
-	if ((int)ratioLine.size() > maxLen) ratioLine = ratioLine.substr(0, maxLen);
+	pos = { (SHORT)colStart, (SHORT)startRow };
+	if ((int)ratioLine.size() > colWidth) ratioLine = ratioLine.substr(0, colWidth);
 	WriteConsoleOutputCharacterA(hOut, ratioLine.c_str(), (DWORD)ratioLine.size(), pos, &written);
 	FillConsoleOutputAttribute(hOut, COLOR_HASH, (DWORD)ratioLine.size(), pos, &written);
 
 	// Metrics separator
 	startRow++;
 	std::string separator2 = " --- Metrics ";
-	while ((int)separator2.size() < consoleWidth - 6) separator2 += "-";
-	pos = { (SHORT)COL_START, (SHORT)startRow };
+	while ((int)separator2.size() < colWidth) separator2 += "-";
+	pos = { (SHORT)colStart, (SHORT)startRow };
 	WriteConsoleOutputCharacterA(hOut, separator2.c_str(), (DWORD)separator2.size(), pos, &written);
 	FillConsoleOutputAttribute(hOut, COLOR_SECTION_HEADER, (DWORD)separator2.size(), pos, &written);
 
 	// Compact metrics on two lines
 	startRow++;
 	std::stringstream ssTime;
-	ssTime << std::fixed << std::setprecision(2) << (metrics.executionTime * 1000.0);
+	ssTime << std::fixed << std::setprecision(5) << (metrics.executionTime * 1000.0);
 	std::stringstream ssTp;
 	ssTp << std::fixed << std::setprecision(2) << metrics.throughput;
-	std::string metricsLine1 = "   Kernel Time: " + ssTime.str() + " ms  |   Throughput: " + ssTp.str() + " MB/s";
-	pos = { (SHORT)COL_START, (SHORT)startRow };
-	if ((int)metricsLine1.size() > maxLen) metricsLine1 = metricsLine1.substr(0, maxLen);
+	std::string metricsLine1 = "   Kernel: " + ssTime.str() + " ms | Throughput: " + ssTp.str() + " MB/s";
+	pos = { (SHORT)colStart, (SHORT)startRow };
+	if ((int)metricsLine1.size() > colWidth) metricsLine1 = metricsLine1.substr(0, colWidth);
 	WriteConsoleOutputCharacterA(hOut, metricsLine1.c_str(), (DWORD)metricsLine1.size(), pos, &written);
 	FillConsoleOutputAttribute(hOut, COLOR_RESULT_VALUE, (DWORD)metricsLine1.size(), pos, &written);
 
 	startRow++;
-	std::stringstream ssPwr;
-	ssPwr << std::fixed << std::setprecision(2) << metrics.avgPowerDraw;
-	std::stringstream ssEnergy;
-	ssEnergy << std::fixed << std::setprecision(4) << metrics.totalEnergy;
-	std::string metricsLine2 = "   Power: " + ssPwr.str() + " W   |   Energy: " + ssEnergy.str() + " J";
-	pos = { (SHORT)COL_START, (SHORT)startRow };
-	if ((int)metricsLine2.size() > maxLen) metricsLine2 = metricsLine2.substr(0, maxLen);
+	std::string metricsLine2;
+	if (isGPU) {
+		std::stringstream ssPwr;
+		ssPwr << std::fixed << std::setprecision(2) << metrics.avgPowerDraw;
+		std::stringstream ssEnergy;
+		ssEnergy << std::fixed << std::setprecision(4) << metrics.totalEnergy;
+		metricsLine2 = "   Power: " + ssPwr.str() + " W | Energy: " + ssEnergy.str() + " J";
+	} else {
+		metricsLine2 = "   Power: N/A | Energy: N/A";
+	}
+	pos = { (SHORT)colStart, (SHORT)startRow };
+	if ((int)metricsLine2.size() > colWidth) metricsLine2 = metricsLine2.substr(0, colWidth);
 	WriteConsoleOutputCharacterA(hOut, metricsLine2.c_str(), (DWORD)metricsLine2.size(), pos, &written);
 	FillConsoleOutputAttribute(hOut, COLOR_RESULT_VALUE, (DWORD)metricsLine2.size(), pos, &written);
-
-	// Redraw status bar to ensure it's not overwritten
-	drawStatusBar();
 }
 
-void CmdUI::drawStatusMessage(const std::string& msg, bool isError)
+void CmdUI::drawStatusMessage(const std::string& msg, bool isGPU, bool isError)
 {
+	updateDimensions();
+	int colWidth = (consoleWidth - 6) / 2;
+	int colStart = isGPU ? COL_START : (COL_START + colWidth + 3);
 	int row = ROW_RESULTS_START + 1;
-	clearLine(row, COL_START, consoleWidth - 2);
+	clearLine(row, colStart, colStart + colWidth - 1);
 
 	DWORD written;
 	std::string text = " " + msg;
-	int maxLen = consoleWidth - COL_START - 2;
+	int maxLen = colWidth - 1;
 	int maxRow = consoleHeight - 4;
 	WORD color = isError ? COLOR_ERROR : COLOR_STATUS;
 	while (!text.empty() && row <= maxRow) {
 		std::string line = text.substr(0, maxLen);
 		text = (int)text.size() > maxLen ? text.substr(maxLen) : "";
-		COORD pos = { (SHORT)COL_START, (SHORT)row };
+		COORD pos = { (SHORT)colStart, (SHORT)row };
 		WriteConsoleOutputCharacterA(hOut, line.c_str(), (DWORD)line.size(), pos, &written);
 		FillConsoleOutputAttribute(hOut, color, (DWORD)line.size(), pos, &written);
 		row++;
@@ -406,8 +524,18 @@ void CmdUI::drawStatusMessage(const std::string& msg, bool isError)
 
 void CmdUI::clearResults()
 {
+	updateDimensions();
+	int colWidth = (consoleWidth - 6) / 2;
+	int cpuColStart = COL_START + colWidth + 3;
+
+	hasCpuMetrics = false;
+	hasGpuMetrics = false;
+	cpuMetrics = {};
+	gpuMetrics = {};
+
 	for (int r = ROW_RESULTS_START + 1; r < consoleHeight - 3; r++) {
-		clearLine(r, COL_START, consoleWidth - 2);
+		clearLine(r, COL_START, COL_START + colWidth - 1);
+		clearLine(r, cpuColStart, cpuColStart + colWidth - 1);
 	}
 }
 
