@@ -252,6 +252,11 @@ void AppController::onRunHashCPU()
 		return;
 	}
 
+	if (n_batch > 1000000) {
+		n_batch = 1000000;
+		ui.drawStatusMessage("Clamped batch to 1,000,000 (CPU safe limit).", false, false);
+	}
+
 	// 4. Prepare input buffer
 	SHA_WORD inlen = (SHA_WORD)inputData.size();
 	BYTE* inBuffer = (BYTE*)malloc(inlen);

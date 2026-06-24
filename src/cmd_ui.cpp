@@ -226,6 +226,8 @@ void CmdUI::drawFrame()
 	// Status bar at bottom
 	drawStatusBar();
 
+	checkBatchWarning();
+
 	if (isDialogOpen) {
 		drawDialog();
 	}
@@ -437,6 +439,21 @@ void CmdUI::drawDialog()
 	WriteConsoleOutputCharacterA(hOut, btnClose.c_str(), (DWORD)btnClose.size(), posClose, &written);
 	FillConsoleOutputAttribute(hOut, COLOR_BUTTON_CLEAR, (DWORD)btnClose.size(), posClose, &written);
 	registerClickRegion(closeX, btnY, (int)btnClose.size(), 1, REGION_DIALOG_CLOSE, "Close Dialog");
+}
+
+void CmdUI::checkBatchWarning()
+{
+	int batch = getBatchSize();
+	DWORD written;
+	COORD pos = { (SHORT)COL_START, 9 };
+	if (batch > 1000000) {
+		std::string warningMsg = "  Warning: Batch size exceeds CPU safe limit (1,000,000). Run will be clamped.";
+		while ((int)warningMsg.size() < consoleWidth - 4) warningMsg += " ";
+		WriteConsoleOutputCharacterA(hOut, warningMsg.c_str(), (DWORD)warningMsg.size(), pos, &written);
+		FillConsoleOutputAttribute(hOut, COLOR_STATUS, (DWORD)warningMsg.size(), pos, &written);
+	} else {
+		clearLine(9, COL_START, consoleWidth - 3);
+	}
 }
 
 void CmdUI::drawResultsPanel(const GPUMetrics& metrics, bool isGPU)
@@ -956,6 +973,10 @@ void CmdUI::handleKeyPress(KEY_EVENT_RECORD keyEvent, UIEventCallback& callback)
 	bool active = true;
 	drawSingleTextbox(targetRow, targetLabel, *targetStr, active,
 		(activeTextbox == 0) ? REGION_TEXTBOX_TEXT : REGION_TEXTBOX_BATCH);
+
+	if (activeTextbox == 1) {
+		checkBatchWarning();
+	}
 }
 
 void CmdUI::handleScrollWheel(int delta)

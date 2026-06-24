@@ -114,6 +114,7 @@ private:
 
 	// Update consoleWidth and consoleHeight dynamically based on the actual screen buffer info
 	void updateDimensions();
+	void checkBatchWarning();
 
 	// Color helpers
 	void setColor(WORD color);
