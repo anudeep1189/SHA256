@@ -196,6 +196,33 @@ void CmdUI::drawFrame()
 		drawResultColumn(cpuMetrics, cpuColStart, false);
 	}
 
+	// Redraw speedup comparison line at row consoleHeight - 3 if both metrics are available
+	if (hasCpuMetrics && hasGpuMetrics) {
+		double gpuRate = (gpuMetrics.executionTime > 0.0) ? (gpuMetrics.batchSize / gpuMetrics.executionTime) : 0.0;
+		double cpuRate = (cpuMetrics.executionTime > 0.0) ? (cpuMetrics.batchSize / cpuMetrics.executionTime) : 0.0;
+		double speedup = (cpuRate > 0.0) ? (gpuRate / cpuRate) : 0.0;
+
+		std::stringstream ss;
+		ss << std::fixed << std::setprecision(2);
+		ss << " --- Speedup: GPU is " << speedup << "x faster than CPU (GPU: " << formatHashRate(gpuRate)
+		   << " vs CPU: " << formatHashRate(cpuRate) << ") ---";
+		std::string speedupLine = ss.str();
+		int centerX = (consoleWidth - (int)speedupLine.size()) / 2;
+		if (centerX < 2) centerX = 2;
+
+		clearLine(consoleHeight - 3, 2, consoleWidth - 3);
+
+		COORD posSpeedup = { (SHORT)centerX, (SHORT)(consoleHeight - 3) };
+		WriteConsoleOutputCharacterA(hOut, speedupLine.c_str(), (DWORD)speedupLine.size(), posSpeedup, &written);
+		FillConsoleOutputAttribute(hOut, COLOR_SPEEDUP, (DWORD)speedupLine.size(), posSpeedup, &written);
+	} else {
+		// Clear the entire speedup row width (including padding columns 84 and 86)
+		clearLine(consoleHeight - 3, 2, consoleWidth - 3);
+		COORD posSep = { (SHORT)sepCol, (SHORT)(consoleHeight - 3) };
+		WriteConsoleOutputCharacterA(hOut, "|", 1, posSep, &written);
+		FillConsoleOutputAttribute(hOut, COLOR_BORDER, 1, posSep, &written);
+	}
+
 	// Status bar at bottom
 	drawStatusBar();
 
@@ -475,11 +502,10 @@ void CmdUI::drawResultsPanel(const GPUMetrics& metrics, bool isGPU)
 
 		COORD posSpeedup = { (SHORT)centerX, (SHORT)(consoleHeight - 3) };
 		WriteConsoleOutputCharacterA(hOut, speedupLine.c_str(), (DWORD)speedupLine.size(), posSpeedup, &written);
-		FillConsoleOutputAttribute(hOut, COLOR_HASH, (DWORD)speedupLine.size(), posSpeedup, &written);
+		FillConsoleOutputAttribute(hOut, COLOR_SPEEDUP, (DWORD)speedupLine.size(), posSpeedup, &written);
 	} else {
-		// Clear row consoleHeight - 3 for both columns and restore vertical separator
-		clearLine(consoleHeight - 3, COL_START, COL_START + colWidth - 1);
-		clearLine(consoleHeight - 3, cpuColStart, cpuColStart + colWidth - 1);
+		// Clear the entire speedup row width (including padding columns 84 and 86)
+		clearLine(consoleHeight - 3, 2, consoleWidth - 3);
 		COORD posSep = { (SHORT)sepCol, (SHORT)(consoleHeight - 3) };
 		WriteConsoleOutputCharacterA(hOut, "|", 1, posSep, &written);
 		FillConsoleOutputAttribute(hOut, COLOR_BORDER, 1, posSep, &written);
@@ -625,7 +651,7 @@ void CmdUI::drawResultColumn(const GPUMetrics& metrics, int colStart, bool isGPU
 	ssTime << std::fixed << std::setprecision(5) << (metrics.executionTime * 1000.0);
 	double hashRate = (metrics.executionTime > 0.0) ? (metrics.batchSize / metrics.executionTime) : 0.0;
 	std::string rateStr = formatHashRate(hashRate);
-	std::string metricsLine1 = "   Kernel: " + ssTime.str() + " ms | Rate: " + rateStr;
+	std::string metricsLine1 = "   Runtime: " + ssTime.str() + " ms | Rate: " + rateStr;
 	pos = { (SHORT)colStart, (SHORT)startRow };
 	if ((int)metricsLine1.size() > colWidth) metricsLine1 = metricsLine1.substr(0, colWidth);
 	WriteConsoleOutputCharacterA(hOut, metricsLine1.c_str(), (DWORD)metricsLine1.size(), pos, &written);
@@ -683,12 +709,14 @@ void CmdUI::clearResults()
 	cpuMetrics = {};
 	gpuMetrics = {};
 
-	for (int r = ROW_RESULTS_START + 1; r < consoleHeight - 2; r++) {
+	// Clear result column data up to row consoleHeight - 4 (leaving consoleHeight - 3 for explicit handling)
+	for (int r = ROW_RESULTS_START + 1; r < consoleHeight - 3; r++) {
 		clearLine(r, COL_START, COL_START + colWidth - 1);
 		clearLine(r, cpuColStart, cpuColStart + colWidth - 1);
 	}
 
-	// Restore vertical separator on row consoleHeight - 3
+	// Wipes the entire speedup row and restores vertical separator to prevent remnants in padding columns 84 and 86
+	clearLine(consoleHeight - 3, 2, consoleWidth - 3);
 	DWORD written;
 	COORD posSep = { (SHORT)sepCol, (SHORT)(consoleHeight - 3) };
 	WriteConsoleOutputCharacterA(hOut, "|", 1, posSep, &written);
