@@ -35,6 +35,10 @@ CmdUI::~CmdUI()
 	}
 }
 
+#ifndef ENABLE_VIRTUAL_TERMINAL_PROCESSING
+#define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004
+#endif
+
 void CmdUI::initialize(int width, int height)
 {
 	hOut = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -43,15 +47,28 @@ void CmdUI::initialize(int width, int height)
 	// Set console output to UTF-8 for Unicode box-drawing characters
 	SetConsoleOutputCP(65001);
 
-	// Query actual size of terminal window or default to width
+	// Enable virtual terminal processing for ANSI escape sequences
+	DWORD dwMode = 0;
+	if (GetConsoleMode(hOut, &dwMode)) {
+		dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+		SetConsoleMode(hOut, dwMode);
+	}
+
+	// Send ANSI escape sequence to resize window to 42 rows and 170 columns
+	DWORD written;
+	std::string resizeSeq = "\x1b[8;42;170t";
+	WriteConsoleA(hOut, resizeSeq.c_str(), (DWORD)resizeSeq.size(), &written, NULL);
+
+	// Give the terminal a brief moment to process the resize sequence
+	Sleep(50);
+
+	// Query actual size of terminal window or default to 170
 	CONSOLE_SCREEN_BUFFER_INFO csbi;
-	int actualWidth = width;
+	int actualWidth = 170;
 	if (GetConsoleScreenBufferInfo(hOut, &csbi)) {
 		int winWidth = csbi.srWindow.Right - csbi.srWindow.Left + 1;
-		if (winWidth > 110) {
+		if (winWidth > actualWidth) {
 			actualWidth = winWidth;
-		} else {
-			actualWidth = 110;
 		}
 	}
 
@@ -90,7 +107,6 @@ void CmdUI::initialize(int width, int height)
 	SetCurrentConsoleFontEx(hOut, FALSE, &fontInfo);
 
 	// Clear screen
-	DWORD written;
 	COORD origin = { 0, 0 };
 	FillConsoleOutputCharacterA(hOut, ' ', consoleWidth * consoleHeight, origin, &written);
 	FillConsoleOutputAttribute(hOut, COLOR_LABEL, consoleWidth * consoleHeight, origin, &written);
