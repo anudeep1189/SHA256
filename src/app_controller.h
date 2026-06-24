@@ -33,8 +33,11 @@ private:
 	// Event handler
 	void onUIEvent(UIEvent event);
 
-	// Core execution
+	// Core execution - GPU path
 	void onRunHashGPU();
+
+	// Core execution - CPU path
+	void onRunHashCPU();
 
 	// Helper: convert 32-byte hash to hex string
 	std::string hashToHex(const unsigned char* hash, int len);

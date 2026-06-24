@@ -16,6 +16,7 @@
     <CudaCompile Include="src\main.cu" />
     <CudaCompile Include="src\power_metrics.cu" />
     <CudaCompile Include="src\sha256.cu" />
+    <CudaCompile Include="src\sha256_cpu.cu" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\app_controller.h" />
@@ -25,10 +26,13 @@
     <ClInclude Include="src\input_handler.h" />
     <ClInclude Include="src\power_metrics.h" />
     <ClInclude Include="src\sha256.cuh" />
+    <ClInclude Include="src\sha256_cpu.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\cmd_ui.cpp" />
-    <ClCompile Include="src\input_handler.cpp" />
+    <ClCompile Include="src\input_handler.cpp" /></ItemGroup>
+  <ItemGroup>
+    <None Include="VALIDATION_PLAN_CPU_SHA256.md" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{6923EE64-A659-647C-742D-7DE5B810108F}</ProjectGuid>

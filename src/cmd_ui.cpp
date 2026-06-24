@@ -18,6 +18,7 @@ CmdUI::CmdUI()
 	, batchSizeStr("100000")
 	, activeTextbox(0)
 	, resultsScrollOffset(0)
+	, lastComputeMode("GPU")
 {
 }
 
@@ -92,13 +93,14 @@ void CmdUI::drawFrame()
 	drawTextboxes();
 	drawGPUInfo(gpuInfo);
 	drawBatchInput();
-	drawRunButton();
+	drawRunButtons();
+	drawRunCPUButton();
 	drawClearButton();
 	drawHorizontalLine(ROW_RESULTS_START - 1, 0, consoleWidth - 1);
 
 	// Results header
 	DWORD written;
-	std::string resultsTitle = " RESULTS";
+	std::string resultsTitle = " RESULTS – " + lastComputeMode;
 	COORD pos = { (SHORT)COL_START, (SHORT)ROW_RESULTS_START };
 	WriteConsoleOutputCharacterA(hOut, resultsTitle.c_str(), (DWORD)resultsTitle.size(), pos, &written);
 	FillConsoleOutputAttribute(hOut, COLOR_SECTION_HEADER, (DWORD)resultsTitle.size(), pos, &written);
@@ -175,11 +177,12 @@ void CmdUI::drawBatchInput()
 	drawSingleTextbox(ROW_BATCH, " Batch Size: ", batchSizeStr, (activeTextbox == 1), REGION_TEXTBOX_BATCH);
 }
 
-void CmdUI::drawRunButton()
+void CmdUI::drawRunButtons()
 {
 	std::string btnLabel = "[ > RUN HASH GPU ]";
+	std::string cpuLabel = "[ > RUN HASH CPU ]";
 	std::string clrLabel = "[ CLEAR ]";
-	int totalWidth = (int)btnLabel.size() + 5 + (int)clrLabel.size();
+	int totalWidth = (int)btnLabel.size() + 3 + (int)cpuLabel.size() + 5 + (int)clrLabel.size();
 	int startX = (consoleWidth - totalWidth) / 2;
 	int row = ROW_BUTTON;
 
@@ -190,13 +193,31 @@ void CmdUI::drawRunButton()
 	registerClickRegion(startX, row, (int)btnLabel.size(), 1, REGION_RUN_BUTTON, "Run Hash GPU");
 }
 
+void CmdUI::drawRunCPUButton()
+{
+	std::string btnLabel = "[ > RUN HASH GPU ]";
+	std::string cpuLabel = "[ > RUN HASH CPU ]";
+	std::string clrLabel = "[ CLEAR ]";
+	int totalWidth = (int)btnLabel.size() + 3 + (int)cpuLabel.size() + 5 + (int)clrLabel.size();
+	int startX = (consoleWidth - totalWidth) / 2;
+	int cpuX = startX + (int)btnLabel.size() + 3;
+	int row = ROW_BUTTON;
+
+	DWORD written;
+	COORD pos = { (SHORT)cpuX, (SHORT)row };
+	WriteConsoleOutputCharacterA(hOut, cpuLabel.c_str(), (DWORD)cpuLabel.size(), pos, &written);
+	FillConsoleOutputAttribute(hOut, COLOR_BUTTON, (DWORD)cpuLabel.size(), pos, &written);
+	registerClickRegion(cpuX, row, (int)cpuLabel.size(), 1, REGION_RUN_BUTTON_CPU, "Run Hash CPU");
+}
+
 void CmdUI::drawClearButton()
 {
 	std::string btnLabel = "[ > RUN HASH GPU ]";
+	std::string cpuLabel = "[ > RUN HASH CPU ]";
 	std::string clrLabel = "[ CLEAR ]";
-	int totalWidth = (int)btnLabel.size() + 5 + (int)clrLabel.size();
+	int totalWidth = (int)btnLabel.size() + 3 + (int)cpuLabel.size() + 5 + (int)clrLabel.size();
 	int startX = (consoleWidth - totalWidth) / 2;
-	int clrX = startX + (int)btnLabel.size() + 5;
+	int clrX = startX + (int)btnLabel.size() + 3 + (int)cpuLabel.size() + 5;
 	int row = ROW_BUTTON;
 
 	DWORD written;
@@ -452,7 +473,13 @@ void CmdUI::handleMouseClick(int x, int y, UIEventCallback& callback)
 
 	switch (regionId) {
 		case REGION_RUN_BUTTON:
+			lastComputeMode = "GPU";
 			if (callback) callback(UIEvent::RUN_CLICKED);
+			break;
+
+		case REGION_RUN_BUTTON_CPU:
+			lastComputeMode = "CPU";
+			if (callback) callback(UIEvent::RUN_CLICKED_CPU);
 			break;
 
 		case REGION_CLEAR_BUTTON:
@@ -487,8 +514,9 @@ void CmdUI::handleKeyPress(KEY_EVENT_RECORD keyEvent, UIEventCallback& callback)
 		return;
 	}
 
-	// ENTER triggers run
+	// ENTER triggers run (default to GPU mode for backward compatibility)
 	if (vk == VK_RETURN) {
+		lastComputeMode = "GPU";
 		if (callback) callback(UIEvent::RUN_CLICKED);
 		return;
 	}

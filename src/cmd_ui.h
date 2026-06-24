@@ -24,6 +24,7 @@ struct ClickRegion {
 // UI Event types for callback
 enum class UIEvent {
 	RUN_CLICKED,
+	RUN_CLICKED_CPU,
 	CLEAR_CLICKED,
 	QUIT
 };
@@ -47,7 +48,8 @@ public:
 	void drawTextboxes();
 	void drawGPUInfo(const GPUDeviceInfo& info);
 	void drawBatchInput();
-	void drawRunButton();
+	void drawRunButtons();
+	void drawRunCPUButton();
 	void drawClearButton();
 	void drawResultsPanel(const GPUMetrics& metrics);
 	void drawStatusMessage(const std::string& msg, bool isError = false);
@@ -91,6 +93,9 @@ private:
 	int resultsScrollOffset;
 	std::vector<std::string> resultsLines;
 
+	// Last compute mode ("GPU" or "CPU") for results title
+	std::string lastComputeMode;
+
 	// Color helpers
 	void setColor(WORD color);
 	void resetColor();
@@ -127,6 +132,7 @@ private:
 
 	// Region IDs
 	static const int REGION_RUN_BUTTON = 3;
+	static const int REGION_RUN_BUTTON_CPU = 7;
 	static const int REGION_CLEAR_BUTTON = 5;
 	static const int REGION_TEXTBOX_TEXT = 4;
 	static const int REGION_TEXTBOX_BATCH = 6;
