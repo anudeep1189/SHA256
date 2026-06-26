@@ -443,17 +443,7 @@ void CmdUI::drawDialog()
 
 void CmdUI::checkBatchWarning()
 {
-	int batch = getBatchSize();
-	DWORD written;
-	COORD pos = { (SHORT)COL_START, 9 };
-	if (batch > 1000000) {
-		std::string warningMsg = "  Warning: Batch size exceeds CPU safe limit (1,000,000). Run will be clamped.";
-		while ((int)warningMsg.size() < consoleWidth - 4) warningMsg += " ";
-		WriteConsoleOutputCharacterA(hOut, warningMsg.c_str(), (DWORD)warningMsg.size(), pos, &written);
-		FillConsoleOutputAttribute(hOut, COLOR_STATUS, (DWORD)warningMsg.size(), pos, &written);
-	} else {
-		clearLine(9, COL_START, consoleWidth - 3);
-	}
+	clearLine(9, COL_START, consoleWidth - 3);
 }
 
 void CmdUI::drawResultsPanel(const GPUMetrics& metrics, bool isGPU)

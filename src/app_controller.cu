@@ -99,20 +99,6 @@ void AppController::onRunHashGPU()
 		return;
 	}
 
-	// 4. Validate batch count against GPU memory
-	// Each thread needs 32 bytes output; input is shared (single copy)
-	if (gpuInfo.valid) {
-		size_t perItemMem = 32;
-		size_t inputMem = inputData.size();
-		size_t safeLimit = (size_t)(gpuInfo.freeMemory * 0.8);
-		int maxSafeBatch = (int)((safeLimit - inputMem) / perItemMem);
-		if (maxSafeBatch < 1) maxSafeBatch = 1;
-		if (n_batch > maxSafeBatch) {
-			n_batch = maxSafeBatch;
-			ui.drawStatusMessage("Clamped batch to " + std::to_string(n_batch) + " (GPU memory limit).", true, false);
-		}
-	}
-
 	// 5. Prepare single-copy input buffer
 	SHA_WORD inlen = (SHA_WORD)inputData.size();
 	BYTE* inBuffer = (BYTE*)malloc(inlen);
@@ -251,12 +237,6 @@ void AppController::onRunHashCPU()
 		ui.drawResultsPanel(errMetrics, false);
 		return;
 	}
-
-	if (n_batch > 1000000) {
-		n_batch = 1000000;
-		ui.drawStatusMessage("Clamped batch to 1,000,000 (CPU safe limit).", false, false);
-	}
-
 	// 4. Prepare input buffer
 	SHA_WORD inlen = (SHA_WORD)inputData.size();
 	BYTE* inBuffer = (BYTE*)malloc(inlen);
