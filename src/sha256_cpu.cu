@@ -204,17 +204,6 @@ int mcm_cpu_sha256_hash_batch(const BYTE* in, SHA_WORD inlen, BYTE* out, SHA_WOR
 		// Feed input data
 		cpu_sha256_update(&ctx, in, inlen);
 
-		// Append nonce if thread > 0
-		if (thread > 0) {
-			BYTE nonce[4];
-			nonce[0] = (BYTE)(thread >> 24);
-			nonce[1] = (BYTE)(thread >> 16);
-			nonce[2] = (BYTE)(thread >> 8);
-			nonce[3] = (BYTE)(thread);
-			cpu_sha256_update(&ctx, nonce, 4);
-		}
-		// Thread 0: original hash (no nonce) - verifiable against standard SHA256 tools
-
 		// Finalize and write output
 		BYTE* output_slot = out + (thread * SHA256_BLOCK_SIZE);
 		cpu_sha256_final(&ctx, output_slot);

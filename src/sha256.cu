@@ -187,18 +187,6 @@ __global__ void kernel_sha256_hash(BYTE* indata, SHA_WORD inlen, BYTE* outdata, 
 	CUDA_SHA256_CTX ctx;
 	cuda_sha256_init(&ctx);
 	cuda_sha256_update(&ctx, in, inlen);
-
-	if (thread > 0) {
-		// Threads 1+ append unique 4-byte nonce for parallel workload
-		BYTE nonce[4];
-		nonce[0] = (BYTE)(thread >> 24);
-		nonce[1] = (BYTE)(thread >> 16);
-		nonce[2] = (BYTE)(thread >> 8);
-		nonce[3] = (BYTE)(thread);
-		cuda_sha256_update(&ctx, nonce, 4);
-	}
-	// Thread 0: original hash (no nonce) - verifiable against standard tools
-
 	cuda_sha256_final(&ctx, out);
 }
 
