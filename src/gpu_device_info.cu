@@ -32,27 +32,20 @@ int getCoresPerSM(int major, int minor)
 	}
 }
 
-extern void log_debug(const std::string& msg);
-
 GPUDeviceInfo queryGPUDevice()
 {
-	log_debug("Inside queryGPUDevice()...");
 	GPUDeviceInfo info = {};
 	info.valid = false;
 
 	int deviceCount = 0;
-	log_debug("Calling cudaGetDeviceCount()...");
 	cudaError_t err = cudaGetDeviceCount(&deviceCount);
-	log_debug("cudaGetDeviceCount() returned code: " + std::to_string(err) + ", deviceCount: " + std::to_string(deviceCount));
 	if (err != cudaSuccess || deviceCount == 0) {
 		info.errorMessage = "No CUDA-capable GPU detected. CUDA Error: " + std::string(cudaGetErrorString(err)) + " (code " + std::to_string(err) + ")";
 		return info;
 	}
 
 	cudaDeviceProp prop;
-	log_debug("Calling cudaGetDeviceProperties()...");
 	err = cudaGetDeviceProperties(&prop, 0);
-	log_debug("cudaGetDeviceProperties() returned code: " + std::to_string(err));
 	if (err != cudaSuccess) {
 		info.errorMessage = "Failed to query GPU device properties.";
 		return info;
@@ -74,13 +67,10 @@ GPUDeviceInfo queryGPUDevice()
 
 	// Query free memory
 	size_t freeMem = 0, totalMem = 0;
-	log_debug("Calling cudaMemGetInfo()...");
 	cudaMemGetInfo(&freeMem, &totalMem);
-	log_debug("cudaMemGetInfo() completed.");
 	info.freeMemory = freeMem;
 
 	info.valid = true;
-	log_debug("queryGPUDevice() succeeded.");
 	return info;
 }
 

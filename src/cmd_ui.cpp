@@ -56,32 +56,30 @@ CmdUI::~CmdUI()
 #define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004
 #endif
 
-extern void log_debug(const std::string& msg);
-
 void CmdUI::initialize(int width, int height)
 {
-	log_debug("CmdUI::initialize: getting console handles...");
 	hOut = GetStdHandle(STD_OUTPUT_HANDLE);
 	hIn = GetStdHandle(STD_INPUT_HANDLE);
 
-	log_debug("CmdUI::initialize: setting output CP...");
+	// Set console output to UTF-8 for Unicode box-drawing characters
 	SetConsoleOutputCP(65001);
 
-	log_debug("CmdUI::initialize: enabling VT processing...");
+	// Enable virtual terminal processing for ANSI escape sequences
 	DWORD dwMode = 0;
 	if (GetConsoleMode(hOut, &dwMode)) {
 		dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
 		SetConsoleMode(hOut, dwMode);
 	}
 
-	log_debug("CmdUI::initialize: resizing window via ANSI...");
+	// Send ANSI escape sequence to resize window to 42 rows and 170 columns
 	DWORD written;
 	std::string resizeSeq = "\x1b[8;42;170t";
 	WriteConsoleA(hOut, resizeSeq.c_str(), (DWORD)resizeSeq.size(), &written, NULL);
 
+	// Give the terminal a brief moment to process the resize sequence
 	Sleep(50);
 
-	log_debug("CmdUI::initialize: querying buffer info...");
+	// Query actual size of terminal window or default to 170
 	CONSOLE_SCREEN_BUFFER_INFO csbi;
 	int actualWidth = 170;
 	if (GetConsoleScreenBufferInfo(hOut, &csbi)) {
@@ -94,31 +92,27 @@ void CmdUI::initialize(int width, int height)
 	consoleWidth = actualWidth;
 	consoleHeight = height;
 
-	log_debug("CmdUI::initialize: setting screen buffer size to: " + std::to_string(consoleWidth) + "x" + std::to_string(consoleHeight));
+	// Set console buffer and window size
 	COORD bufferSize = { (SHORT)consoleWidth, (SHORT)consoleHeight };
-	BOOL res1 = SetConsoleScreenBufferSize(hOut, bufferSize);
-	log_debug("SetConsoleScreenBufferSize returned: " + std::to_string(res1));
+	SetConsoleScreenBufferSize(hOut, bufferSize);
 
-	log_debug("CmdUI::initialize: setting window info...");
 	SMALL_RECT windowSize = { 0, 0, (SHORT)(consoleWidth - 1), (SHORT)(consoleHeight - 1) };
-	BOOL res2 = SetConsoleWindowInfo(hOut, TRUE, &windowSize);
-	log_debug("SetConsoleWindowInfo returned: " + std::to_string(res2));
+	SetConsoleWindowInfo(hOut, TRUE, &windowSize);
 
-	log_debug("CmdUI::initialize: setting input mode...");
+	// Enable mouse and window input
 	DWORD mode = ENABLE_MOUSE_INPUT | ENABLE_EXTENDED_FLAGS | ENABLE_WINDOW_INPUT;
-	BOOL res3 = SetConsoleMode(hIn, mode);
-	log_debug("SetConsoleMode (hIn) returned: " + std::to_string(res3));
+	SetConsoleMode(hIn, mode);
 
-	log_debug("CmdUI::initialize: hiding cursor...");
+	// Hide cursor
 	CONSOLE_CURSOR_INFO cursorInfo;
 	cursorInfo.dwSize = 1;
 	cursorInfo.bVisible = FALSE;
 	SetConsoleCursorInfo(hOut, &cursorInfo);
 
-	log_debug("CmdUI::initialize: setting title...");
+	// Set console title
 	SetConsoleTitleA("SHA256");
 
-	log_debug("CmdUI::initialize: setting current font...");
+	// Set console font to a TrueType font that supports Unicode
 	CONSOLE_FONT_INFOEX fontInfo = {};
 	fontInfo.cbSize = sizeof(fontInfo);
 	fontInfo.nFont = 0;
@@ -127,14 +121,12 @@ void CmdUI::initialize(int width, int height)
 	fontInfo.FontFamily = FF_DONTCARE;
 	fontInfo.FontWeight = FW_NORMAL;
 	wcscpy_s(fontInfo.FaceName, L"Consolas");
-	BOOL res4 = SetCurrentConsoleFontEx(hOut, FALSE, &fontInfo);
-	log_debug("SetCurrentConsoleFontEx returned: " + std::to_string(res4));
+	SetCurrentConsoleFontEx(hOut, FALSE, &fontInfo);
 
-	log_debug("CmdUI::initialize: clearing screen...");
+	// Clear screen
 	COORD origin = { 0, 0 };
 	FillConsoleOutputCharacterA(hOut, ' ', consoleWidth * consoleHeight, origin, &written);
 	FillConsoleOutputAttribute(hOut, COLOR_LABEL, consoleWidth * consoleHeight, origin, &written);
-	log_debug("CmdUI::initialize completed.");
 }
 
 void CmdUI::updateDimensions()
@@ -152,9 +144,7 @@ void CmdUI::updateDimensions()
 
 void CmdUI::drawFrame()
 {
-	log_debug("CmdUI::drawFrame starting...");
 	updateDimensions();
-	log_debug("CmdUI::drawFrame: dimensions updated: " + std::to_string(consoleWidth) + "x" + std::to_string(consoleHeight));
 	int colWidth = (consoleWidth - 6) / 2;
 	int sepCol = COL_START + colWidth + 1;
 	int cpuColStart = COL_START + colWidth + 3;
@@ -163,30 +153,24 @@ void CmdUI::drawFrame()
 
 	// Clear the entire interior of the console screen first to prevent any layout artifacts
 	DWORD written;
-	log_debug("CmdUI::drawFrame: clearing interior...");
 	for (int r = 1; r < consoleHeight - 1; r++) {
 		COORD pos = { 1, (SHORT)r };
 		FillConsoleOutputCharacterA(hOut, ' ', consoleWidth - 2, pos, &written);
 		FillConsoleOutputAttribute(hOut, COLOR_LABEL, consoleWidth - 2, pos, &written);
 	}
 
-	log_debug("CmdUI::drawFrame: drawing border box...");
 	drawBox(0, 0, consoleWidth, consoleHeight);
-	log_debug("CmdUI::drawFrame: drawing title...");
 	drawTitle();
-	log_debug("CmdUI::drawFrame: drawing lines and inputs...");
 	drawHorizontalLine(3, 0, consoleWidth - 1);
 	drawTextboxes();
 	drawGPUInfo(gpuInfo);
 	drawBatchInput();
-	log_debug("CmdUI::drawFrame: drawing buttons...");
 	drawRunButtons();
 	drawRunCPUButton();
 	drawClearButton();
 	drawHorizontalLine(ROW_RESULTS_START - 1, 0, consoleWidth - 1);
 
 	// Results headers
-	log_debug("CmdUI::drawFrame: drawing results headers...");
 	std::string gpuTitle = " RESULTS – GPU";
 	COORD posGPU = { (SHORT)COL_START, (SHORT)ROW_RESULTS_START };
 	WriteConsoleOutputCharacterA(hOut, gpuTitle.c_str(), (DWORD)gpuTitle.size(), posGPU, &written);
@@ -240,15 +224,13 @@ void CmdUI::drawFrame()
 	}
 
 	// Status bar at bottom
-	log_debug("CmdUI::drawFrame: drawing status bar...");
 	drawStatusBar();
 
 	checkBatchWarning();
 
 	if (isDialogOpen) {
 		drawDialog();
-	}
-	log_debug("CmdUI::drawFrame completed successfully.");
+	};
 }
 
 void CmdUI::drawTitle()
