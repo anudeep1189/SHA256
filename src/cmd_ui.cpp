@@ -10,6 +10,7 @@
 #include <ftxui/dom/table.hpp>
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/screen_interactive.hpp>
+#include <ftxui/component/mouse.hpp>
 #include <sstream>
 #include <iomanip>
 #include <thread>
@@ -28,6 +29,8 @@ CmdUI::CmdUI()
 	, isGpuRunning(false)
 	, isCpuRunning(false)
 	, redrawTrigger(nullptr)
+	, gpuScrollOffset(0)
+	, cpuScrollOffset(0)
 {
 }
 
@@ -91,6 +94,8 @@ void CmdUI::clearResults()
 		hasCpuMetrics = false;
 		gpuStatusMsg = "";
 		cpuStatusMsg = "";
+		gpuScrollOffset = 0;
+		cpuScrollOffset = 0;
 	}
 	if (redrawTrigger) {
 		redrawTrigger();
@@ -108,6 +113,8 @@ void CmdUI::clearAll()
 		textInputStr = "abc";
 		batchSizeStr = "100000";
 		runsCountStr = "10";
+		gpuScrollOffset = 0;
+		cpuScrollOffset = 0;
 	}
 	if (redrawTrigger) {
 		redrawTrigger();
@@ -158,6 +165,7 @@ void CmdUI::runEventLoop(UIEventCallback callback)
 	Component btn_gpu = Button("Run Hash (GPU)", [&]() {
 		if (isGpuRunning || isCpuRunning) return;
 		isGpuRunning = true;
+		gpuScrollOffset = 0;
 		drawStatusMessage("Processing GPU Hashing...", true, false);
 		std::thread([this, callback]() {
 			callback(UIEvent::RUN_CLICKED);
@@ -169,6 +177,7 @@ void CmdUI::runEventLoop(UIEventCallback callback)
 	Component btn_cpu = Button("Run Hash (CPU)", [&]() {
 		if (isGpuRunning || isCpuRunning) return;
 		isCpuRunning = true;
+		cpuScrollOffset = 0;
 		drawStatusMessage("Processing CPU Hashing...", false, false);
 		std::thread([this, callback]() {
 			callback(UIEvent::RUN_CLICKED_CPU);
@@ -254,7 +263,16 @@ void CmdUI::runEventLoop(UIEventCallback callback)
 		} else if (hasGpuMetrics && gpuMetrics.valid) {
 			std::vector<std::vector<std::string>> tData;
 			tData.push_back({"Run", "Single (ms)", "Batch (ms)", "Runtime (ms)", "Rate"});
-			for (const auto& r : gpuMetrics.runs) {
+			
+			int totalRuns = (int)gpuMetrics.runs.size();
+			int startIndex = gpuScrollOffset;
+			int visibleCount = 8;
+			if (startIndex + visibleCount > totalRuns) {
+				startIndex = std::max(0, totalRuns - visibleCount);
+			}
+			
+			for (int i = startIndex; i < std::min(totalRuns, startIndex + visibleCount); ++i) {
+				const auto& r = gpuMetrics.runs[i];
 				tData.push_back({
 					std::to_string(r.runNumber),
 					std::to_string(r.singleMs).substr(0, 7),
@@ -265,6 +283,7 @@ void CmdUI::runEventLoop(UIEventCallback callback)
 			}
 			Table t(tData);
 			t.SelectAll().Border(LIGHT);
+			t.SelectAll().Separator(LIGHT);
 			t.SelectRow(0).Decorate(bold);
 
 			double avgSingle = 0, avgBatch = 0, avgRuntime = 0, avgRate = 0, totalRuntime = 0;
@@ -285,15 +304,23 @@ void CmdUI::runEventLoop(UIEventCallback callback)
 			});
 			Table sum_t(sumData);
 			sum_t.SelectAll().Border(LIGHT);
+			sum_t.SelectAll().Separator(LIGHT);
 			sum_t.SelectRow(0).Decorate(bold);
+
+			std::string runDetailsLabel = "Run Details:";
+			if (totalRuns > visibleCount) {
+				runDetailsLabel += " (Showing " + std::to_string(startIndex + 1) + "-" + 
+				                   std::to_string(std::min(totalRuns, startIndex + visibleCount)) + 
+				                   " of " + std::to_string(totalRuns) + ", Hover + Mouse Scroll to view)";
+			}
 
 			gpu_panel = vbox({
 				text("RESULTS - GPU") | bold | color(Color::Green),
 				separator(),
 				text("Hashes Computed: " + std::to_string(gpuMetrics.batchSize)),
 				text("Original Hash:   " + gpuMetrics.hashResult) | color(Color::Green),
-				text("Run Details:") | bold,
-				t.Render() | vscroll_indicator | frame | size(HEIGHT, EQUAL, 8),
+				text(runDetailsLabel) | bold,
+				t.Render(),
 				separator(),
 				text("Summary:") | bold,
 				sum_t.Render(),
@@ -318,7 +345,16 @@ void CmdUI::runEventLoop(UIEventCallback callback)
 		} else if (hasCpuMetrics && cpuMetrics.valid) {
 			std::vector<std::vector<std::string>> tData;
 			tData.push_back({"Run", "Single (ms)", "Batch (ms)", "Runtime (ms)", "Rate"});
-			for (const auto& r : cpuMetrics.runs) {
+			
+			int totalRuns = (int)cpuMetrics.runs.size();
+			int startIndex = cpuScrollOffset;
+			int visibleCount = 8;
+			if (startIndex + visibleCount > totalRuns) {
+				startIndex = std::max(0, totalRuns - visibleCount);
+			}
+			
+			for (int i = startIndex; i < std::min(totalRuns, startIndex + visibleCount); ++i) {
+				const auto& r = cpuMetrics.runs[i];
 				tData.push_back({
 					std::to_string(r.runNumber),
 					std::to_string(r.singleMs).substr(0, 7),
@@ -329,6 +365,7 @@ void CmdUI::runEventLoop(UIEventCallback callback)
 			}
 			Table t(tData);
 			t.SelectAll().Border(LIGHT);
+			t.SelectAll().Separator(LIGHT);
 			t.SelectRow(0).Decorate(bold);
 
 			double avgSingle = 0, avgBatch = 0, avgRuntime = 0, avgRate = 0, totalRuntime = 0;
@@ -349,15 +386,23 @@ void CmdUI::runEventLoop(UIEventCallback callback)
 			});
 			Table sum_t(sumData);
 			sum_t.SelectAll().Border(LIGHT);
+			sum_t.SelectAll().Separator(LIGHT);
 			sum_t.SelectRow(0).Decorate(bold);
+
+			std::string runDetailsLabel = "Run Details:";
+			if (totalRuns > visibleCount) {
+				runDetailsLabel += " (Showing " + std::to_string(startIndex + 1) + "-" + 
+				                   std::to_string(std::min(totalRuns, startIndex + visibleCount)) + 
+				                   " of " + std::to_string(totalRuns) + ", Hover + Mouse Scroll to view)";
+			}
 
 			cpu_panel = vbox({
 				text("RESULTS - CPU") | bold | color(Color::Yellow),
 				separator(),
 				text("Hashes Computed: " + std::to_string(cpuMetrics.batchSize)),
 				text("Original Hash:   " + cpuMetrics.hashResult) | color(Color::Yellow),
-				text("Run Details:") | bold,
-				t.Render() | vscroll_indicator | frame | size(HEIGHT, EQUAL, 8),
+				text(runDetailsLabel) | bold,
+				t.Render(),
 				separator(),
 				text("Summary:") | bold,
 				sum_t.Render(),
@@ -388,5 +433,44 @@ void CmdUI::runEventLoop(UIEventCallback callback)
 		});
 	});
 
-	screen.Loop(renderer);
+	auto main_handler = CatchEvent(renderer, [&](Event event) {
+		if (event.is_mouse()) {
+			auto mouse = event.mouse();
+			int terminalWidth = screen.dimx();
+			int middle = terminalWidth / 2;
+			if (mouse.button == Mouse::WheelUp) {
+				if (mouse.x < middle) {
+					gpuScrollOffset = std::max(0, gpuScrollOffset - 1);
+				} else {
+					cpuScrollOffset = std::max(0, cpuScrollOffset - 1);
+				}
+				if (redrawTrigger) redrawTrigger();
+				return true;
+			}
+			if (mouse.button == Mouse::WheelDown) {
+				if (mouse.x < middle) {
+					int totalRuns = 0;
+					{
+						std::lock_guard<std::mutex> lock(metricsMutex);
+						totalRuns = (int)gpuMetrics.runs.size();
+					}
+					int maxOffset = std::max(0, totalRuns - 8);
+					gpuScrollOffset = std::min(maxOffset, gpuScrollOffset + 1);
+				} else {
+					int totalRuns = 0;
+					{
+						std::lock_guard<std::mutex> lock(metricsMutex);
+						totalRuns = (int)cpuMetrics.runs.size();
+					}
+					int maxOffset = std::max(0, totalRuns - 8);
+					cpuScrollOffset = std::min(maxOffset, cpuScrollOffset + 1);
+				}
+				if (redrawTrigger) redrawTrigger();
+				return true;
+			}
+		}
+		return false;
+	});
+
+	screen.Loop(main_handler);
 }

@@ -79,4 +79,8 @@ private:
 
 	// Mutex for synchronizing worker thread data
 	std::mutex metricsMutex;
+
+	// Scroll offsets for results tables
+	int gpuScrollOffset;
+	int cpuScrollOffset;
 };
