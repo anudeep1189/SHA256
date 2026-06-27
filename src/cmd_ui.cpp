@@ -524,7 +524,7 @@ void CmdUI::runEventLoop(UIEventCallback callback)
 		);
 
 		return vbox({
-			text("SHA256 CUDA & CPU BENCHMARK TOOL") | bold | color(Color::Cyan) | hcenter,
+			text("SHA256 CUDA & CPU BENCHMARK") | bold | color(Color::Cyan) | hcenter,
 			separator(),
 			parameters_box,
 			execution_box,
