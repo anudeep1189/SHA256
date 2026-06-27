@@ -281,7 +281,7 @@ void CmdUI::runEventLoop(UIEventCallback callback)
 		auto parameters_box = window(text("1. Benchmark Parameters") | bold | color(Color::Cyan), vbox({
 			hbox(text("Text to Hash:   ") | color(Color::Green), input_text_el),
 			hbox(text("Batch Size:     ") | color(Color::Green), input_batch_el),
-			hbox(text("Runs Count:     ") | color(Color::Green), input_runs_el),
+			hbox(text("Number of Runs: ") | color(Color::Green), input_runs_el),
 			separator(),
 			text("Validation Limits:") | bold | color(Color::Yellow),
 			text("  • Max GPU Batch Size: 50,000,000") | color(Color::Yellow),
