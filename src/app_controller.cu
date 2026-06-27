@@ -91,11 +91,20 @@ void AppController::onRunHashGPU()
 
 	// 3. Get batch size
 	int n_batch = ui.getBatchSize();
-
-	if (n_batch <= 0) {
+	if (n_batch <= 0 || n_batch > 50000000) {
 		GPUMetrics errMetrics = {};
 		errMetrics.valid = false;
-		errMetrics.errorMessage = "Batch size must be greater than 0.";
+		errMetrics.errorMessage = "Batch size must be between 1 and 50,000,000 for GPU.";
+		ui.drawResultsPanel(errMetrics, true);
+		return;
+	}
+
+	// 4. Get runs count
+	int numberOfRuns = ui.getRunsCount();
+	if (numberOfRuns <= 0) {
+		GPUMetrics errMetrics = {};
+		errMetrics.valid = false;
+		errMetrics.errorMessage = "Runs count must be greater than 0.";
 		ui.drawResultsPanel(errMetrics, true);
 		return;
 	}
@@ -125,8 +134,6 @@ void AppController::onRunHashGPU()
 	}
 	memset(outBuffer, 0, totalOutputSize);
 	// 7. Start power sampling and timer
-	int numberOfRuns = ui.getRunsCount();
-	if (numberOfRuns <= 0) numberOfRuns = 1;
  
 	metrics.startSampling();
 	metrics.startTimer();
@@ -263,11 +270,20 @@ void AppController::onRunHashCPU()
 
 	// 3. Get batch size
 	int n_batch = ui.getBatchSize();
-
-	if (n_batch <= 0) {
+	if (n_batch <= 0 || n_batch > 10000000) {
 		GPUMetrics errMetrics = {};
 		errMetrics.valid = false;
-		errMetrics.errorMessage = "Batch size must be greater than 0.";
+		errMetrics.errorMessage = "Batch size must be between 1 and 10,000,000 for CPU.";
+		ui.drawResultsPanel(errMetrics, false);
+		return;
+	}
+
+	// 4. Get runs count
+	int numberOfRuns = ui.getRunsCount();
+	if (numberOfRuns <= 0) {
+		GPUMetrics errMetrics = {};
+		errMetrics.valid = false;
+		errMetrics.errorMessage = "Runs count must be greater than 0.";
 		ui.drawResultsPanel(errMetrics, false);
 		return;
 	}
@@ -297,8 +313,6 @@ void AppController::onRunHashCPU()
 	memset(outBuffer, 0, totalOutputSize);
 
 	// 6. Start timer for batch processing
-	int numberOfRuns = ui.getRunsCount();
-	if (numberOfRuns <= 0) numberOfRuns = 1;
  
 	int cpuErr = 0;
 	std::vector<RunMeasurement> runsList;

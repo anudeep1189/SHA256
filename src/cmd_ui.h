@@ -83,4 +83,7 @@ private:
 	// Scroll offsets for results tables
 	int gpuScrollOffset;
 	int cpuScrollOffset;
+
+	// Last mouse cursor X coordinate
+	int lastMouseX;
 };
