@@ -17,6 +17,34 @@
 #include <thread>
 #include <algorithm>
 
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+
+namespace {
+void disableWindowsCtrlCControlEvent()
+{
+	HANDLE stdinHandle = GetStdHandle(STD_INPUT_HANDLE);
+	if (stdinHandle == INVALID_HANDLE_VALUE) {
+		return;
+	}
+
+	DWORD mode = 0;
+	if (!GetConsoleMode(stdinHandle, &mode)) {
+		return;
+	}
+
+	mode &= ~ENABLE_PROCESSED_INPUT;
+	SetConsoleMode(stdinHandle, mode);
+}
+}
+#endif
+
 CmdUI::CmdUI()
 	: textInputStr("abc")
 	, batchSizeStr("100000")
@@ -158,6 +186,10 @@ void CmdUI::runEventLoop(UIEventCallback callback)
 	using namespace ftxui;
 
 	auto screen = ScreenInteractive::TerminalOutput();
+	screen.ForceHandleCtrlC(false);
+#if defined(_WIN32)
+	screen.Post(disableWindowsCtrlCControlEvent);
+#endif
 	redrawTrigger = [&]() { screen.PostEvent(Event::Custom); };
 
 	// Setup inputs
@@ -501,6 +533,10 @@ void CmdUI::runEventLoop(UIEventCallback callback)
 	});
 
 	auto main_handler = CatchEvent(renderer, [&](Event event) {
+		if (event == Event::CtrlC) {
+			return true;
+		}
+
 		if (event.is_mouse()) {
 			auto mouse = event.mouse();
 			lastMouseX = mouse.x;
