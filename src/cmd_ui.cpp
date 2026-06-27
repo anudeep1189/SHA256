@@ -32,6 +32,7 @@ CmdUI::CmdUI()
 	, consoleWidth(170)
 	, consoleHeight(42)
 	, batchSizeStr("100000")
+	, runsStr("10")
 	, activeTextbox(0)
 	, resultsScrollOffset(0)
 	, lastComputeMode("GPU")
@@ -165,6 +166,7 @@ void CmdUI::drawFrame()
 	drawTextboxes();
 	drawGPUInfo(gpuInfo);
 	drawBatchInput();
+	drawRunsInput();
 	drawRunButtons();
 	drawRunCPUButton();
 	drawClearButton();
@@ -278,6 +280,11 @@ void CmdUI::drawGPUInfo(const GPUDeviceInfo& info)
 void CmdUI::drawBatchInput()
 {
 	drawSingleTextbox(ROW_BATCH, " Batch Size: ", batchSizeStr, (activeTextbox == 1), REGION_TEXTBOX_BATCH);
+}
+ 
+void CmdUI::drawRunsInput()
+{
+	drawSingleTextbox(ROW_RUNS, " Runs Count: ", runsStr, (activeTextbox == 2), REGION_TEXTBOX_RUNS);
 }
 
 void CmdUI::drawRunButtons()
@@ -552,65 +559,97 @@ void CmdUI::drawResultColumn(const GPUMetrics& metrics, int colStart, bool isGPU
 			break; // Only show one original hash
 		}
 	}
-
-	// Parallel Advantage separator
+ 
+	// Runs table header
 	startRow++;
-	std::string advSep = " --- Parallel Advantage ";
-	while ((int)advSep.size() < colWidth) advSep += "-";
+	std::string tableHeader = " --- Run Hashing Times ";
+	while ((int)tableHeader.size() < colWidth) tableHeader += "-";
 	pos = { (SHORT)colStart, (SHORT)startRow };
-	WriteConsoleOutputCharacterA(hOut, advSep.c_str(), (DWORD)advSep.size(), pos, &written);
-	FillConsoleOutputAttribute(hOut, COLOR_SECTION_HEADER, (DWORD)advSep.size(), pos, &written);
-
+	WriteConsoleOutputCharacterA(hOut, tableHeader.c_str(), (DWORD)tableHeader.size(), pos, &written);
+	FillConsoleOutputAttribute(hOut, COLOR_SECTION_HEADER, (DWORD)tableHeader.size(), pos, &written);
+ 
 	startRow++;
-	std::stringstream ssSingle;
-	ssSingle << std::fixed << std::setprecision(5) << metrics.singleHashTimeMs;
-	std::string singleLabel = "   Single hash (batch=1): ";
-	while ((int)singleLabel.size() < 26) singleLabel += " ";
-	std::string singleValue = ssSingle.str() + " ms";
+	std::string colHeaders = "  Run       Single (ms)       Batch (ms)       Runtime (ms)            Rate";
 	pos = { (SHORT)colStart, (SHORT)startRow };
-	WriteConsoleOutputCharacterA(hOut, singleLabel.c_str(), (DWORD)singleLabel.size(), pos, &written);
-	FillConsoleOutputAttribute(hOut, COLOR_RESULT_LABEL, (DWORD)singleLabel.size(), pos, &written);
-	COORD svPos = { (SHORT)(colStart + (int)singleLabel.size()), (SHORT)startRow };
-	WriteConsoleOutputCharacterA(hOut, singleValue.c_str(), (DWORD)singleValue.size(), svPos, &written);
-	FillConsoleOutputAttribute(hOut, COLOR_RESULT_VALUE, (DWORD)singleValue.size(), svPos, &written);
-
+	WriteConsoleOutputCharacterA(hOut, colHeaders.c_str(), (int)colHeaders.size() < colWidth ? (DWORD)colHeaders.size() : (DWORD)colWidth, pos, &written);
+	FillConsoleOutputAttribute(hOut, COLOR_RESULT_LABEL, (int)colHeaders.size() < colWidth ? (DWORD)colHeaders.size() : (DWORD)colWidth, pos, &written);
+ 
 	startRow++;
-	std::stringstream ssBatch;
-	ssBatch << std::fixed << std::setprecision(5) << metrics.batchHashTimeMs;
-	std::string batchLabel2 = "   Batch (n=" + std::to_string(metrics.batchSize) + "): ";
-	if (batchLabel2.size() > 29) batchLabel2 = batchLabel2.substr(0, 29);
-	while ((int)batchLabel2.size() < 29) batchLabel2 += " ";
-	std::string batchValue2 = ssBatch.str() + " ms";
+	std::string tableSep(colWidth, '-');
 	pos = { (SHORT)colStart, (SHORT)startRow };
-	WriteConsoleOutputCharacterA(hOut, batchLabel2.c_str(), (DWORD)batchLabel2.size(), pos, &written);
-	FillConsoleOutputAttribute(hOut, COLOR_RESULT_LABEL, (DWORD)batchLabel2.size(), pos, &written);
-	COORD bv2Pos = { (SHORT)(colStart + (int)batchLabel2.size()), (SHORT)startRow };
-	WriteConsoleOutputCharacterA(hOut, batchValue2.c_str(), (DWORD)batchValue2.size(), bv2Pos, &written);
-	FillConsoleOutputAttribute(hOut, COLOR_RESULT_VALUE, (DWORD)batchValue2.size(), bv2Pos, &written);
-
-	// Ratio line removed
-
-	// Metrics separator
+	WriteConsoleOutputCharacterA(hOut, tableSep.c_str(), (DWORD)tableSep.size(), pos, &written);
+	FillConsoleOutputAttribute(hOut, COLOR_BORDER, (DWORD)tableSep.size(), pos, &written);
+ 
+	// Display runs
+	for (const auto& run : metrics.runs) {
+		if (startRow >= consoleHeight - 6) break;
+		startRow++;
+		std::stringstream ss;
+		ss << std::fixed << std::setprecision(5);
+		ss << "   " << std::setw(2) << run.runNumber 
+		   << "           " << std::setw(8) << run.singleMs 
+		   << "          " << std::setw(8) << run.batchMs
+		   << "          " << std::setw(8) << run.runtimeMs
+		   << "       " << std::setw(11) << formatHashRate(run.rate);
+		std::string runLine = ss.str();
+		pos = { (SHORT)colStart, (SHORT)startRow };
+		WriteConsoleOutputCharacterA(hOut, runLine.c_str(), (int)runLine.size() < colWidth ? (DWORD)runLine.size() : (DWORD)colWidth, pos, &written);
+		FillConsoleOutputAttribute(hOut, COLOR_RESULT_VALUE, (int)runLine.size() < colWidth ? (DWORD)runLine.size() : (DWORD)colWidth, pos, &written);
+	}
+ 
+	// Averages separator
 	startRow++;
-	std::string separator2 = " --- Metrics ";
-	while ((int)separator2.size() < colWidth) separator2 += "-";
+	std::string avgSep = " --- Summary ";
+	while ((int)avgSep.size() < colWidth) avgSep += "-";
 	pos = { (SHORT)colStart, (SHORT)startRow };
-	WriteConsoleOutputCharacterA(hOut, separator2.c_str(), (DWORD)separator2.size(), pos, &written);
-	FillConsoleOutputAttribute(hOut, COLOR_SECTION_HEADER, (DWORD)separator2.size(), pos, &written);
-
-	// Compact metrics on two lines
+	WriteConsoleOutputCharacterA(hOut, avgSep.c_str(), (DWORD)avgSep.size(), pos, &written);
+	FillConsoleOutputAttribute(hOut, COLOR_SECTION_HEADER, (DWORD)avgSep.size(), pos, &written);
+ 
+	// Compute Averages and Totals
+	double avgSingle = 0.0;
+	double avgBatch = 0.0;
+	double avgRuntime = 0.0;
+	double avgRate = 0.0;
+	double totalRuntime = 0.0;
+	if (!metrics.runs.empty()) {
+		for (const auto& run : metrics.runs) {
+			avgSingle += run.singleMs;
+			avgBatch += run.batchMs;
+			avgRuntime += run.runtimeMs;
+			avgRate += run.rate;
+			totalRuntime += run.runtimeMs;
+		}
+		avgSingle /= metrics.runs.size();
+		avgBatch /= metrics.runs.size();
+		avgRuntime /= metrics.runs.size();
+		avgRate /= metrics.runs.size();
+	}
+ 
+	// Average row
 	startRow++;
-	std::stringstream ssTime;
-	ssTime << std::fixed << std::setprecision(5) << (metrics.executionTime * 1000.0);
-	double hashRate = (metrics.executionTime > 0.0) ? (metrics.batchSize / metrics.executionTime) : 0.0;
-	std::string rateStr = formatHashRate(hashRate);
-	std::string metricsLine1 = "   Runtime: " + ssTime.str() + " ms | Rate: " + rateStr;
+	std::stringstream ssAvg;
+	ssAvg << std::fixed << std::setprecision(5);
+	ssAvg << "  Average" << "       "
+	      << std::setw(8) << avgSingle << "          "
+	      << std::setw(8) << avgBatch << "          "
+	      << std::setw(8) << avgRuntime << "       "
+	      << std::setw(11) << formatHashRate(avgRate);
+	std::string avgLine = ssAvg.str();
 	pos = { (SHORT)colStart, (SHORT)startRow };
-	if ((int)metricsLine1.size() > colWidth) metricsLine1 = metricsLine1.substr(0, colWidth);
-	WriteConsoleOutputCharacterA(hOut, metricsLine1.c_str(), (DWORD)metricsLine1.size(), pos, &written);
-	FillConsoleOutputAttribute(hOut, COLOR_RESULT_VALUE, (DWORD)metricsLine1.size(), pos, &written);
-
-	// Power/Energy line removed
+	if ((int)avgLine.size() > colWidth) avgLine = avgLine.substr(0, colWidth);
+	WriteConsoleOutputCharacterA(hOut, avgLine.c_str(), (DWORD)avgLine.size(), pos, &written);
+	FillConsoleOutputAttribute(hOut, COLOR_RESULT_VALUE, (DWORD)avgLine.size(), pos, &written);
+ 
+	// Total Runtime line printed separately away from the table
+	startRow++;
+	std::stringstream ssTot;
+	ssTot << std::fixed << std::setprecision(5);
+	ssTot << "   Total Time Taken: " << totalRuntime << " ms";
+	std::string totLine = ssTot.str();
+	pos = { (SHORT)colStart, (SHORT)startRow };
+	if ((int)totLine.size() > colWidth) totLine = totLine.substr(0, colWidth);
+	WriteConsoleOutputCharacterA(hOut, totLine.c_str(), (DWORD)totLine.size(), pos, &written);
+	FillConsoleOutputAttribute(hOut, COLOR_RESULT_LABEL, (DWORD)totLine.size(), pos, &written);
 }
 
 void CmdUI::drawStatusMessage(const std::string& msg, bool isGPU, bool isError)
@@ -774,12 +813,21 @@ void CmdUI::handleMouseClick(int x, int y, UIEventCallback& callback)
 			activeTextbox = 0;
 			drawTextboxes();
 			drawBatchInput();
+			drawRunsInput();
 			break;
 
 		case REGION_TEXTBOX_BATCH:
 			activeTextbox = 1;
 			drawTextboxes();
 			drawBatchInput();
+			drawRunsInput();
+			break;
+
+		case REGION_TEXTBOX_RUNS:
+			activeTextbox = 2;
+			drawTextboxes();
+			drawBatchInput();
+			drawRunsInput();
 			break;
 
 		case REGION_SAMPLE_HASH:
@@ -821,9 +869,10 @@ void CmdUI::handleKeyPress(KEY_EVENT_RECORD keyEvent, UIEventCallback& callback)
 
 	// TAB cycles between textboxes
 	if (vk == VK_TAB) {
-		activeTextbox = (activeTextbox == 0) ? 1 : 0;
+		activeTextbox = (activeTextbox + 1) % 3;
 		drawTextboxes();
 		drawBatchInput();
+		drawRunsInput();
 		return;
 	}
 
@@ -843,6 +892,11 @@ void CmdUI::handleKeyPress(KEY_EVENT_RECORD keyEvent, UIEventCallback& callback)
 			targetRow = ROW_BATCH;
 			targetLabel = " Batch Size: ";
 			break;
+		case 2:
+			targetStr = &runsStr;
+			targetRow = ROW_RUNS;
+			targetLabel = " Runs Count: ";
+			break;
 		default:
 			return;
 	}
@@ -861,8 +915,8 @@ void CmdUI::handleKeyPress(KEY_EVENT_RECORD keyEvent, UIEventCallback& callback)
 	// Ctrl+V: paste into active textbox
 	else if (vk == 'V' && (keyEvent.dwControlKeyState & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED))) {
 		std::string clipText = pasteFromClipboard();
-		if (activeTextbox == 1) {
-			// Batch size: filter to digits only
+		if (activeTextbox == 1 || activeTextbox == 2) {
+			// Batch size & runs: filter to digits only
 			for (char c : clipText) {
 				if (c >= '0' && c <= '9') {
 					targetStr->push_back(c);
@@ -878,8 +932,8 @@ void CmdUI::handleKeyPress(KEY_EVENT_RECORD keyEvent, UIEventCallback& callback)
 	}
 	// Printable character
 	else if (ch >= 32 && ch <= 126) {
-		// For batch size, only accept digits
-		if (activeTextbox == 1) {
+		// For batch size and runs, only accept digits
+		if (activeTextbox == 1 || activeTextbox == 2) {
 			if (ch >= '0' && ch <= '9') {
 				targetStr->push_back(ch);
 			}
@@ -893,8 +947,10 @@ void CmdUI::handleKeyPress(KEY_EVENT_RECORD keyEvent, UIEventCallback& callback)
 
 	// Redraw the affected textbox
 	bool active = true;
-	drawSingleTextbox(targetRow, targetLabel, *targetStr, active,
-		(activeTextbox == 0) ? REGION_TEXTBOX_TEXT : REGION_TEXTBOX_BATCH);
+	int regId = REGION_TEXTBOX_TEXT;
+	if (activeTextbox == 1) regId = REGION_TEXTBOX_BATCH;
+	else if (activeTextbox == 2) regId = REGION_TEXTBOX_RUNS;
+	drawSingleTextbox(targetRow, targetLabel, *targetStr, active, regId);
 
 	if (activeTextbox == 1) {
 		checkBatchWarning();
@@ -1067,6 +1123,18 @@ int CmdUI::getBatchSize() const
 	if (batchSizeStr.empty()) return 1;
 	try {
 		int val = std::stoi(batchSizeStr);
+		return (val > 0) ? val : 1;
+	}
+	catch (...) {
+		return 1;
+	}
+}
+ 
+int CmdUI::getRunsCount() const
+{
+	if (runsStr.empty()) return 1;
+	try {
+		int val = std::stoi(runsStr);
 		return (val > 0) ? val : 1;
 	}
 	catch (...) {

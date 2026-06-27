@@ -48,6 +48,7 @@ public:
 	void drawTextboxes();
 	void drawGPUInfo(const GPUDeviceInfo& info);
 	void drawBatchInput();
+	void drawRunsInput();
 	void drawRunButtons();
 	void drawRunCPUButton();
 	void drawClearButton();
@@ -67,6 +68,7 @@ public:
 	// Getters for current UI state
 	std::string getTextInput() const;
 	int getBatchSize() const;
+	int getRunsCount() const;
 
 	// Set GPU info for display
 	void setGPUInfo(const GPUDeviceInfo& info);
@@ -81,6 +83,7 @@ private:
 	// UI State
 	std::string textInput;
 	std::string batchSizeStr;
+	std::string runsStr;
 	GPUDeviceInfo gpuInfo;
 
 	// Clickable regions
@@ -145,8 +148,9 @@ private:
 	static const int ROW_TEXT_INPUT = 4;
 	static const int ROW_GPU_INFO = 6;
 	static const int ROW_BATCH = 8;
-	static const int ROW_BUTTON = 10;
-	static const int ROW_RESULTS_START = 12;
+	static const int ROW_RUNS = 10;
+	static const int ROW_BUTTON = 12;
+	static const int ROW_RESULTS_START = 14;
 	static const int COL_START = 2;
 	static const int COL_INPUT_START = 16;
 
@@ -156,6 +160,7 @@ private:
 	static const int REGION_CLEAR_BUTTON = 5;
 	static const int REGION_TEXTBOX_TEXT = 4;
 	static const int REGION_TEXTBOX_BATCH = 6;
+	static const int REGION_TEXTBOX_RUNS = 11;
 	static const int REGION_DIALOG_COPY = 8;
 	static const int REGION_DIALOG_CLOSE = 9;
 	static const int REGION_SAMPLE_HASH = 20;
