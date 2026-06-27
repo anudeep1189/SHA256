@@ -17,6 +17,7 @@ extern "C" {
 #include <iomanip>
 #include <cstring>
 #include <chrono>
+#include <cstdlib>
 
 #define SHA256_DIGEST_SIZE 32
 
@@ -39,7 +40,7 @@ void AppController::run()
 	running = true;
 
 	// Initialize UI
-	ui.initialize(170, 42);
+	ui.initialize();
 	ui.setGPUInfo(gpuInfo);
 	ui.drawFrame();
 
@@ -67,7 +68,7 @@ void AppController::onUIEvent(UIEvent event)
 		case UIEvent::QUIT:
 			running = false;
 			// Force exit the event loop
-			ExitProcess(0);
+			exit(0);
 			break;
 	}
 }
@@ -361,6 +362,7 @@ void AppController::onRunHashCPU()
 	result.valid = true;
 	result.batchSize = n_batch;
 	result.sampleHashes = sampleHashes;
+	result.hashResult = sampleHashes.empty() ? "" : sampleHashes[0].second;
 	result.singleHashTimeMs = totalSingleTimeMs / numberOfRuns;
 	result.batchHashTimeMs = totalBatchTimeMs / numberOfRuns;
 	result.executionTime = totalBatchTimeMs / 1000.0; // Convert to seconds

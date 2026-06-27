@@ -1,25 +1,18 @@
 /*
- * cmd_ui.h - Console UI Interface
- * Single Responsibility: Render clickable/scrollable CMD interface and handle user input events
+ * cmd_ui.h - FTXUI Terminal UI Interface
+ * Single Responsibility: Render a terminal dashboard interface using FTXUI.
  *
- * Part of SHA256 CUDA Hasher Phase 1
+ * Part of SHA256 CUDA Hasher Phase 2
  */
 
 #pragma once
 
-#include <windows.h>
 #include <string>
-#include <vector>
 #include <functional>
+#include <mutex>
+#include <atomic>
 #include "gpu_device_info.h"
 #include "power_metrics.h"
-
-// Clickable region definition
-struct ClickRegion {
-	SMALL_RECT bounds;
-	int id;
-	std::string label;
-};
 
 // UI Event types for callback
 enum class UIEvent {
@@ -37,32 +30,17 @@ public:
 	CmdUI();
 	~CmdUI();
 
-	// Initialize console with desired dimensions
-	void initialize(int width = 110, int height = 42);
+	// Initialize TUI settings (no window handles needed)
+	void initialize(int width = 0, int height = 0);
 
-	// Draw the complete UI frame
+	// Redraw/status compatibility helpers
 	void drawFrame();
-
-	// Draw individual sections
-	void drawTitle();
-	void drawTextboxes();
-	void drawGPUInfo(const GPUDeviceInfo& info);
-	void drawBatchInput();
-	void drawRunsInput();
-	void drawRunButtons();
-	void drawRunCPUButton();
-	void drawClearButton();
 	void drawResultsPanel(const GPUMetrics& metrics, bool isGPU);
 	void drawStatusMessage(const std::string& msg, bool isGPU, bool isError = false);
-	void drawStatusBar();
-
-	// Clear results area
 	void clearResults();
-
-	// Clear input and results
 	void clearAll();
 
-	// Event loop - returns when user quits
+	// TUI event loop - blocks until terminal screen quits
 	void runEventLoop(UIEventCallback callback);
 
 	// Getters for current UI state
@@ -74,111 +52,31 @@ public:
 	void setGPUInfo(const GPUDeviceInfo& info);
 
 private:
-	// Console handles
-	HANDLE hOut;
-	HANDLE hIn;
-	int consoleWidth;
-	int consoleHeight;
-
-	// UI State
-	std::string textInput;
+	// UI State input fields (bound to FTXUI Input components)
+	std::string textInputStr;
 	std::string batchSizeStr;
-	std::string runsStr;
+	std::string runsCountStr;
 	GPUDeviceInfo gpuInfo;
 
-	// Clickable regions
-	std::vector<ClickRegion> clickRegions;
-
-	// Active textbox (0=text, 1=batch)
-	int activeTextbox;
-
-	// Results scroll state
-	int resultsScrollOffset;
-	std::vector<std::string> resultsLines;
-
-	// Last compute mode ("GPU" or "CPU") for results title
-	std::string lastComputeMode;
-
-	// Side-by-side results metrics
-	GPUMetrics cpuMetrics;
+	// Results metrics
 	GPUMetrics gpuMetrics;
-	bool hasCpuMetrics;
+	GPUMetrics cpuMetrics;
 	bool hasGpuMetrics;
+	bool hasCpuMetrics;
 
-	// Dialog state
-	bool isDialogOpen;
-	std::string dialogHashValue;
+	// Status messages
+	std::string gpuStatusMsg;
+	std::string cpuStatusMsg;
+	bool gpuStatusIsError;
+	bool cpuStatusIsError;
 
-	// Helper to draw the modal dialog
-	void drawDialog();
+	// Running states
+	std::atomic<bool> isGpuRunning;
+	std::atomic<bool> isCpuRunning;
 
-	// Helper for drawing a column of results
-	void drawResultColumn(const GPUMetrics& metrics, int colStart, bool isGPU);
+	// Screen refresh trigger
+	std::function<void()> redrawTrigger;
 
-	// Update consoleWidth and consoleHeight dynamically based on the actual screen buffer info
-	void updateDimensions();
-	void checkBatchWarning();
-
-	// Color helpers
-	void setColor(WORD color);
-	void resetColor();
-	void setCursor(int x, int y);
-	void clearLine(int y, int startX, int endX);
-	void drawBox(int x, int y, int width, int height);
-	void drawHorizontalLine(int y, int startX, int endX);
-
-	// Event handling
-	void handleMouseClick(int x, int y, UIEventCallback& callback);
-	void handleKeyPress(KEY_EVENT_RECORD keyEvent, UIEventCallback& callback);
-	void handleScrollWheel(int delta);
-
-	// Region management
-	void registerClickRegion(int x, int y, int width, int height, int id, const std::string& label);
-	int hitTestRegion(int x, int y);
-
-	// Textbox rendering helper
-	void drawSingleTextbox(int row, const std::string& label, const std::string& value, bool active, int textboxId);
-
-	// Clipboard helpers
-	void copyToClipboard(const std::string& text);
-	std::string pasteFromClipboard();
-
-	// Constants
-	static const int ROW_TITLE = 1;
-	static const int ROW_TEXT_INPUT = 4;
-	static const int ROW_GPU_INFO = 6;
-	static const int ROW_BATCH = 8;
-	static const int ROW_RUNS = 10;
-	static const int ROW_BUTTON = 12;
-	static const int ROW_RESULTS_START = 14;
-	static const int COL_START = 2;
-	static const int COL_INPUT_START = 16;
-
-	// Region IDs
-	static const int REGION_RUN_BUTTON = 3;
-	static const int REGION_RUN_BUTTON_CPU = 7;
-	static const int REGION_CLEAR_BUTTON = 5;
-	static const int REGION_TEXTBOX_TEXT = 4;
-	static const int REGION_TEXTBOX_BATCH = 6;
-	static const int REGION_TEXTBOX_RUNS = 11;
-	static const int REGION_DIALOG_COPY = 8;
-	static const int REGION_DIALOG_CLOSE = 9;
-	static const int REGION_SAMPLE_HASH = 20;
-
-	// Color scheme
-	static const WORD COLOR_BORDER = FOREGROUND_GREEN | FOREGROUND_INTENSITY;
-	static const WORD COLOR_TITLE = FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY;
-	static const WORD COLOR_LABEL = FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE;
-	static const WORD COLOR_INPUT_ACTIVE = FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY | BACKGROUND_BLUE | BACKGROUND_INTENSITY;
-	static const WORD COLOR_INPUT_INACTIVE = FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | BACKGROUND_BLUE;
-	static const WORD COLOR_BUTTON = FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_INTENSITY;
-	static const WORD COLOR_BUTTON_CLEAR = FOREGROUND_RED | FOREGROUND_INTENSITY;
-	static const WORD COLOR_RESULT_LABEL = FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE;
-	static const WORD COLOR_RESULT_VALUE = FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY;
-	static const WORD COLOR_HASH = FOREGROUND_GREEN | FOREGROUND_INTENSITY;
-	static const WORD COLOR_SPEEDUP = FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_INTENSITY;
-	static const WORD COLOR_ERROR = FOREGROUND_RED | FOREGROUND_INTENSITY;
-	static const WORD COLOR_STATUS = FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_INTENSITY;
-	static const WORD COLOR_STATUSBAR = FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | BACKGROUND_BLUE;
-	static const WORD COLOR_SECTION_HEADER = FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_INTENSITY;
+	// Mutex for synchronizing worker thread data
+	std::mutex metricsMutex;
 };
