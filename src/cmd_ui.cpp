@@ -196,32 +196,11 @@ void CmdUI::drawFrame()
 		drawResultColumn(cpuMetrics, cpuColStart, false);
 	}
 
-	// Redraw speedup comparison line at row consoleHeight - 3 if both metrics are available
-	if (hasCpuMetrics && hasGpuMetrics) {
-		double gpuRate = (gpuMetrics.executionTime > 0.0) ? (gpuMetrics.batchSize / gpuMetrics.executionTime) : 0.0;
-		double cpuRate = (cpuMetrics.executionTime > 0.0) ? (cpuMetrics.batchSize / cpuMetrics.executionTime) : 0.0;
-		double speedup = (cpuRate > 0.0) ? (gpuRate / cpuRate) : 0.0;
-
-		std::stringstream ss;
-		ss << std::fixed << std::setprecision(2);
-		ss << " --- Speedup: GPU is " << speedup << "x faster than CPU (GPU: " << formatHashRate(gpuRate)
-		   << " vs CPU: " << formatHashRate(cpuRate) << ") ---";
-		std::string speedupLine = ss.str();
-		int centerX = (consoleWidth - (int)speedupLine.size()) / 2;
-		if (centerX < 2) centerX = 2;
-
-		clearLine(consoleHeight - 3, 2, consoleWidth - 3);
-
-		COORD posSpeedup = { (SHORT)centerX, (SHORT)(consoleHeight - 3) };
-		WriteConsoleOutputCharacterA(hOut, speedupLine.c_str(), (DWORD)speedupLine.size(), posSpeedup, &written);
-		FillConsoleOutputAttribute(hOut, COLOR_SPEEDUP, (DWORD)speedupLine.size(), posSpeedup, &written);
-	} else {
-		// Clear the entire speedup row width (including padding columns 84 and 86)
-		clearLine(consoleHeight - 3, 2, consoleWidth - 3);
-		COORD posSep = { (SHORT)sepCol, (SHORT)(consoleHeight - 3) };
-		WriteConsoleOutputCharacterA(hOut, "|", 1, posSep, &written);
-		FillConsoleOutputAttribute(hOut, COLOR_BORDER, 1, posSep, &written);
-	}
+	// Clear the entire speedup row width (including padding columns 84 and 86) and draw vertical separator
+	clearLine(consoleHeight - 3, 2, consoleWidth - 3);
+	COORD posSep = { (SHORT)sepCol, (SHORT)(consoleHeight - 3) };
+	WriteConsoleOutputCharacterA(hOut, "|", 1, posSep, &written);
+	FillConsoleOutputAttribute(hOut, COLOR_BORDER, 1, posSep, &written);
 
 	// Status bar at bottom
 	drawStatusBar();
@@ -491,32 +470,11 @@ void CmdUI::drawResultsPanel(const GPUMetrics& metrics, bool isGPU)
 		}
 	}
 
-	// Redraw speedup comparison line at row consoleHeight - 3 if both metrics are available
-	if (hasCpuMetrics && hasGpuMetrics) {
-		double gpuRate = (gpuMetrics.executionTime > 0.0) ? (gpuMetrics.batchSize / gpuMetrics.executionTime) : 0.0;
-		double cpuRate = (cpuMetrics.executionTime > 0.0) ? (cpuMetrics.batchSize / cpuMetrics.executionTime) : 0.0;
-		double speedup = (cpuRate > 0.0) ? (gpuRate / cpuRate) : 0.0;
-
-		std::stringstream ss;
-		ss << std::fixed << std::setprecision(2);
-		ss << " --- Speedup: GPU is " << speedup << "x faster than CPU (GPU: " << formatHashRate(gpuRate)
-		   << " vs CPU: " << formatHashRate(cpuRate) << ") ---";
-		std::string speedupLine = ss.str();
-		int centerX = (consoleWidth - (int)speedupLine.size()) / 2;
-		if (centerX < 2) centerX = 2;
-
-		clearLine(consoleHeight - 3, 2, consoleWidth - 3);
-
-		COORD posSpeedup = { (SHORT)centerX, (SHORT)(consoleHeight - 3) };
-		WriteConsoleOutputCharacterA(hOut, speedupLine.c_str(), (DWORD)speedupLine.size(), posSpeedup, &written);
-		FillConsoleOutputAttribute(hOut, COLOR_SPEEDUP, (DWORD)speedupLine.size(), posSpeedup, &written);
-	} else {
-		// Clear the entire speedup row width (including padding columns 84 and 86)
-		clearLine(consoleHeight - 3, 2, consoleWidth - 3);
-		COORD posSep = { (SHORT)sepCol, (SHORT)(consoleHeight - 3) };
-		WriteConsoleOutputCharacterA(hOut, "|", 1, posSep, &written);
-		FillConsoleOutputAttribute(hOut, COLOR_BORDER, 1, posSep, &written);
-	}
+	// Clear the entire speedup row width (including padding columns 84 and 86) and draw vertical separator
+	clearLine(consoleHeight - 3, 2, consoleWidth - 3);
+	COORD posSep = { (SHORT)sepCol, (SHORT)(consoleHeight - 3) };
+	WriteConsoleOutputCharacterA(hOut, "|", 1, posSep, &written);
+	FillConsoleOutputAttribute(hOut, COLOR_BORDER, 1, posSep, &written);
 
 	// Redraw status bar
 	drawStatusBar();
@@ -566,37 +524,33 @@ void CmdUI::drawResultColumn(const GPUMetrics& metrics, int colStart, bool isGPU
 	WriteConsoleOutputCharacterA(hOut, batchValue.c_str(), (DWORD)batchValue.size(), bvPos, &written);
 	FillConsoleOutputAttribute(hOut, COLOR_RESULT_VALUE, (DWORD)batchValue.size(), bvPos, &written);
 
-	// Sample hashes
+	// Sample hashes - Only show Original hash
 	startRow += 2;
 	for (const auto& sample : metrics.sampleHashes) {
-		if (startRow >= consoleHeight - 10) break;
-		std::string label;
 		if (sample.first == -1) {
-			label = " Original:      ";
-		} else {
-			label = " Hash #" + std::to_string(sample.first) + ": ";
-			while ((int)label.size() < 17) label += " ";
-		}
-		std::string hashVal = sample.second;
-		
-		// Responsive hash truncation to prevent text wrap on narrower terminals
-		int hashMaxLen = colWidth - (int)label.size();
-		if ((int)hashVal.size() > hashMaxLen) {
-			if (hashMaxLen > 15) {
-				hashVal = hashVal.substr(0, hashMaxLen - 11) + "..." + hashVal.substr(hashVal.size() - 8);
-			} else {
-				hashVal = hashVal.substr(0, hashMaxLen);
+			std::string label = " Original:      ";
+			std::string hashVal = sample.second;
+			
+			// Responsive hash truncation to prevent text wrap on narrower terminals
+			int hashMaxLen = colWidth - (int)label.size();
+			if ((int)hashVal.size() > hashMaxLen) {
+				if (hashMaxLen > 15) {
+					hashVal = hashVal.substr(0, hashMaxLen - 11) + "..." + hashVal.substr(hashVal.size() - 8);
+				} else {
+					hashVal = hashVal.substr(0, hashMaxLen);
+				}
 			}
-		}
 
-		pos = { (SHORT)colStart, (SHORT)startRow };
-		WriteConsoleOutputCharacterA(hOut, label.c_str(), (DWORD)label.size(), pos, &written);
-		FillConsoleOutputAttribute(hOut, COLOR_RESULT_LABEL, (DWORD)label.size(), pos, &written);
-		COORD hPos = { (SHORT)(colStart + (int)label.size()), (SHORT)startRow };
-		WriteConsoleOutputCharacterA(hOut, hashVal.c_str(), (DWORD)hashVal.size(), hPos, &written);
-		FillConsoleOutputAttribute(hOut, COLOR_HASH, (DWORD)hashVal.size(), hPos, &written);
-		registerClickRegion(colStart, startRow, colWidth, 1, REGION_SAMPLE_HASH, sample.second);
-		startRow++;
+			pos = { (SHORT)colStart, (SHORT)startRow };
+			WriteConsoleOutputCharacterA(hOut, label.c_str(), (DWORD)label.size(), pos, &written);
+			FillConsoleOutputAttribute(hOut, COLOR_RESULT_LABEL, (DWORD)label.size(), pos, &written);
+			COORD hPos = { (SHORT)(colStart + (int)label.size()), (SHORT)startRow };
+			WriteConsoleOutputCharacterA(hOut, hashVal.c_str(), (DWORD)hashVal.size(), hPos, &written);
+			FillConsoleOutputAttribute(hOut, COLOR_HASH, (DWORD)hashVal.size(), hPos, &written);
+			registerClickRegion(colStart, startRow, colWidth, 1, REGION_SAMPLE_HASH, sample.second);
+			startRow++;
+			break; // Only show one original hash
+		}
 	}
 
 	// Parallel Advantage separator
@@ -634,15 +588,7 @@ void CmdUI::drawResultColumn(const GPUMetrics& metrics, int colStart, bool isGPU
 	WriteConsoleOutputCharacterA(hOut, batchValue2.c_str(), (DWORD)batchValue2.size(), bv2Pos, &written);
 	FillConsoleOutputAttribute(hOut, COLOR_RESULT_VALUE, (DWORD)batchValue2.size(), bv2Pos, &written);
 
-	startRow++;
-	double ratio = (metrics.singleHashTimeMs > 0.0) ? (metrics.batchHashTimeMs / metrics.singleHashTimeMs) : 0.0;
-	std::stringstream ssRatio;
-	ssRatio << std::fixed << std::setprecision(2) << ratio;
-	std::string ratioLine = "   Ratio: " + std::to_string(metrics.batchSize) + " hashes in only " + ssRatio.str() + "x the time";
-	pos = { (SHORT)colStart, (SHORT)startRow };
-	if ((int)ratioLine.size() > colWidth) ratioLine = ratioLine.substr(0, colWidth);
-	WriteConsoleOutputCharacterA(hOut, ratioLine.c_str(), (DWORD)ratioLine.size(), pos, &written);
-	FillConsoleOutputAttribute(hOut, COLOR_HASH, (DWORD)ratioLine.size(), pos, &written);
+	// Ratio line removed
 
 	// Metrics separator
 	startRow++;
@@ -664,21 +610,7 @@ void CmdUI::drawResultColumn(const GPUMetrics& metrics, int colStart, bool isGPU
 	WriteConsoleOutputCharacterA(hOut, metricsLine1.c_str(), (DWORD)metricsLine1.size(), pos, &written);
 	FillConsoleOutputAttribute(hOut, COLOR_RESULT_VALUE, (DWORD)metricsLine1.size(), pos, &written);
 
-	startRow++;
-	std::string metricsLine2;
-	if (isGPU) {
-		std::stringstream ssPwr;
-		ssPwr << std::fixed << std::setprecision(2) << metrics.avgPowerDraw;
-		std::stringstream ssEnergy;
-		ssEnergy << std::fixed << std::setprecision(4) << metrics.totalEnergy;
-		metricsLine2 = "   Power: " + ssPwr.str() + " W | Energy: " + ssEnergy.str() + " J";
-	} else {
-		metricsLine2 = "   Power: N/A | Energy: N/A";
-	}
-	pos = { (SHORT)colStart, (SHORT)startRow };
-	if ((int)metricsLine2.size() > colWidth) metricsLine2 = metricsLine2.substr(0, colWidth);
-	WriteConsoleOutputCharacterA(hOut, metricsLine2.c_str(), (DWORD)metricsLine2.size(), pos, &written);
-	FillConsoleOutputAttribute(hOut, COLOR_RESULT_VALUE, (DWORD)metricsLine2.size(), pos, &written);
+	// Power/Energy line removed
 }
 
 void CmdUI::drawStatusMessage(const std::string& msg, bool isGPU, bool isError)
