@@ -46,9 +46,9 @@ void disableWindowsCtrlCControlEvent()
 #endif
 
 CmdUI::CmdUI()
-	: textInputStr("abc")
+	: textInputStr("The quick brown fox jumps over the lazy dog")
 	, batchSizeStr("100000")
-	, runsCountStr("10")
+	, runsCountStr("100")
 	, hasGpuMetrics(false)
 	, hasCpuMetrics(false)
 	, gpuMetrics{}
@@ -142,9 +142,9 @@ void CmdUI::clearAll()
 		hasCpuMetrics = false;
 		gpuStatusMsg = "";
 		cpuStatusMsg = "";
-		textInputStr = "abc";
+		textInputStr = "The quick brown fox jumps over the lazy dog";
 		batchSizeStr = "100000";
-		runsCountStr = "10";
+		runsCountStr = "100";
 		gpuScrollOffset = 0;
 		cpuScrollOffset = 0;
 	}
@@ -193,9 +193,9 @@ void CmdUI::runEventLoop(UIEventCallback callback)
 	redrawTrigger = [&]() { screen.PostEvent(Event::Custom); };
 
 	// Setup inputs
-	Component input_text = Input(&textInputStr, "abc");
+	Component input_text = Input(&textInputStr, "The quick brown fox jumps over the lazy dog");
 	Component input_batch = Input(&batchSizeStr, "100000");
-	Component input_runs = Input(&runsCountStr, "10");
+	Component input_runs = Input(&runsCountStr, "100");
 	constexpr int kVisibleRunRows = 7;
 
 	// Setup buttons
