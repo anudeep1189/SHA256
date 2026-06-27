@@ -44,6 +44,9 @@ GPUDeviceInfo queryGPUDevice()
 		return info;
 	}
 
+	// Warm up the CUDA context to hide the first-run initialization latency
+	cudaFree(0);
+
 	cudaDeviceProp prop;
 	err = cudaGetDeviceProperties(&prop, 0);
 	if (err != cudaSuccess) {

@@ -15,6 +15,14 @@
 #include <cuda_runtime.h>
 #include <nvml.h>
 
+struct RunMeasurement {
+	int runNumber;
+	double singleMs;
+	double batchMs;
+	double runtimeMs;
+	double rate;
+};
+
 struct GPUMetrics {
 	double executionTime;    // seconds
 	double avgPowerDraw;     // watts
@@ -25,6 +33,7 @@ struct GPUMetrics {
 	std::vector<std::pair<int, std::string>> sampleHashes; // index + hex pairs
 	double singleHashTimeMs; // kernel time for batch=1
 	double batchHashTimeMs;  // kernel time for full batch
+	std::vector<RunMeasurement> runs; // individual runs measurements
 	bool valid;
 	std::string errorMessage;
 };

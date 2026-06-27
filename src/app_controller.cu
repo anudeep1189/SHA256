@@ -17,6 +17,7 @@ extern "C" {
 #include <iomanip>
 #include <cstring>
 #include <chrono>
+#include <cstdlib>
 
 #define SHA256_DIGEST_SIZE 32
 
@@ -39,7 +40,7 @@ void AppController::run()
 	running = true;
 
 	// Initialize UI
-	ui.initialize(170, 42);
+	ui.initialize();
 	ui.setGPUInfo(gpuInfo);
 	ui.drawFrame();
 
@@ -67,7 +68,7 @@ void AppController::onUIEvent(UIEvent event)
 		case UIEvent::QUIT:
 			running = false;
 			// Force exit the event loop
-			ExitProcess(0);
+			exit(0);
 			break;
 	}
 }
@@ -90,11 +91,20 @@ void AppController::onRunHashGPU()
 
 	// 3. Get batch size
 	int n_batch = ui.getBatchSize();
-
-	if (n_batch <= 0) {
+	if (n_batch <= 0 || n_batch > 50000000) {
 		GPUMetrics errMetrics = {};
 		errMetrics.valid = false;
-		errMetrics.errorMessage = "Batch size must be greater than 0.";
+		errMetrics.errorMessage = "Batch size must be between 1 and 50,000,000 for GPU.";
+		ui.drawResultsPanel(errMetrics, true);
+		return;
+	}
+
+	// 4. Get runs count
+	int numberOfRuns = ui.getRunsCount();
+	if (numberOfRuns <= 0) {
+		GPUMetrics errMetrics = {};
+		errMetrics.valid = false;
+		errMetrics.errorMessage = "Runs count must be greater than 0.";
 		ui.drawResultsPanel(errMetrics, true);
 		return;
 	}
@@ -123,45 +133,71 @@ void AppController::onRunHashGPU()
 		return;
 	}
 	memset(outBuffer, 0, totalOutputSize);
-
 	// 7. Start power sampling and timer
+ 
 	metrics.startSampling();
 	metrics.startTimer();
-
-	// 8. Call SHA256 CUDA kernel (nonce-based, unique hash per thread) - timed with CUDA events
-	cudaEvent_t batchStart, batchStop;
-	cudaEventCreate(&batchStart);
-	cudaEventCreate(&batchStop);
-	cudaEventRecord(batchStart);
-	cudaError_t cudaErr = mcm_cuda_sha256_hash_batch(inBuffer, inlen, outBuffer, (SHA_WORD)n_batch);
-	cudaEventRecord(batchStop);
-	cudaEventSynchronize(batchStop);
-	float batchTimeMs = 0.0f;
-	cudaEventElapsedTime(&batchTimeMs, batchStart, batchStop);
-	cudaEventDestroy(batchStart);
-	cudaEventDestroy(batchStop);
-
+ 
+	std::vector<RunMeasurement> runsList;
+	cudaError_t cudaErr = cudaSuccess;
+	double totalBatchTimeMs = 0.0;
+	double totalSingleTimeMs = 0.0;
+	double totalRuntimeMs = 0.0;
+ 
+	for (int r = 1; r <= numberOfRuns; ++r) {
+		// Time the full batch hash
+		cudaEvent_t batchStart, batchStop;
+		cudaEventCreate(&batchStart);
+		cudaEventCreate(&batchStop);
+		cudaEventRecord(batchStart);
+		
+		auto runStart = std::chrono::steady_clock::now();
+		cudaErr = mcm_cuda_sha256_hash_batch(inBuffer, inlen, outBuffer, (SHA_WORD)n_batch);
+		cudaEventRecord(batchStop);
+		cudaEventSynchronize(batchStop);
+		auto runEnd = std::chrono::steady_clock::now();
+		
+		float batchTimeMs = 0.0f;
+		cudaEventElapsedTime(&batchTimeMs, batchStart, batchStop);
+		cudaEventDestroy(batchStart);
+		cudaEventDestroy(batchStop);
+ 
+		double runtimeMs = std::chrono::duration<double, std::milli>(runEnd - runStart).count();
+ 
+		if (cudaErr != cudaSuccess) {
+			break;
+		}
+ 
+		// Time a single-hash run for comparison
+		BYTE* singleOutBuffer = (BYTE*)malloc(SHA256_DIGEST_SIZE);
+		float singleTimeMs = 0.0f;
+		if (singleOutBuffer) {
+			memset(singleOutBuffer, 0, SHA256_DIGEST_SIZE);
+			cudaEvent_t singleStart, singleStop;
+			cudaEventCreate(&singleStart);
+			cudaEventCreate(&singleStop);
+			cudaEventRecord(singleStart);
+			mcm_cuda_sha256_hash_batch(inBuffer, inlen, singleOutBuffer, 1);
+			cudaEventRecord(singleStop);
+			cudaEventSynchronize(singleStop);
+			cudaEventElapsedTime(&singleTimeMs, singleStart, singleStop);
+			cudaEventDestroy(singleStart);
+			cudaEventDestroy(singleStop);
+			free(singleOutBuffer);
+		}
+ 
+		double rate = (batchTimeMs > 0.0) ? (n_batch / (batchTimeMs / 1000.0)) : 0.0;
+		RunMeasurement measurement = { r, (double)singleTimeMs, (double)batchTimeMs, runtimeMs, rate };
+		runsList.push_back(measurement);
+ 
+		totalBatchTimeMs += batchTimeMs;
+		totalSingleTimeMs += singleTimeMs;
+		totalRuntimeMs += runtimeMs;
+	}
+ 
 	// 9. Stop timer and power sampling
 	metrics.stopTimer();
 	metrics.stopSampling();
-
-	// 9b. Run single-hash kernel for parallel advantage comparison
-	BYTE* singleOutBuffer = (BYTE*)malloc(SHA256_DIGEST_SIZE);
-	float singleTimeMs = 0.0f;
-	if (singleOutBuffer) {
-		memset(singleOutBuffer, 0, SHA256_DIGEST_SIZE);
-		cudaEvent_t singleStart, singleStop;
-		cudaEventCreate(&singleStart);
-		cudaEventCreate(&singleStop);
-		cudaEventRecord(singleStart);
-		mcm_cuda_sha256_hash_batch(inBuffer, inlen, singleOutBuffer, 1);
-		cudaEventRecord(singleStop);
-		cudaEventSynchronize(singleStop);
-		cudaEventElapsedTime(&singleTimeMs, singleStart, singleStop);
-		cudaEventDestroy(singleStart);
-		cudaEventDestroy(singleStop);
-		free(singleOutBuffer);
-	}
 
 	// Check for CUDA errors
 	if (cudaErr != cudaSuccess) {
@@ -196,12 +232,17 @@ void AppController::onRunHashGPU()
 	}
 
 	// 11. Build metrics
-	size_t totalDataProcessed = (size_t)(inlen + 4) * n_batch;
+	size_t totalDataProcessed = (size_t)(inlen + 4) * n_batch * numberOfRuns;
 	GPUMetrics result = metrics.buildMetrics(totalDataProcessed, sampleHashes[0].second);
 	result.batchSize = n_batch;
 	result.sampleHashes = sampleHashes;
-	result.singleHashTimeMs = (double)singleTimeMs;
-	result.batchHashTimeMs = (double)batchTimeMs;
+	result.singleHashTimeMs = totalSingleTimeMs / numberOfRuns;
+	result.batchHashTimeMs = totalBatchTimeMs / numberOfRuns;
+	result.executionTime = totalRuntimeMs / 1000.0;
+	result.throughput = (totalDataProcessed > 0 && totalRuntimeMs > 0.0)
+		? (totalDataProcessed / (1024.0 * 1024.0)) / (totalRuntimeMs / 1000.0)
+		: 0.0;
+	result.runs = runsList;
 
 	// 12. Display results
 	ui.drawResultsPanel(result, true);
@@ -229,11 +270,20 @@ void AppController::onRunHashCPU()
 
 	// 3. Get batch size
 	int n_batch = ui.getBatchSize();
-
-	if (n_batch <= 0) {
+	if (n_batch <= 0 || n_batch > 10000000) {
 		GPUMetrics errMetrics = {};
 		errMetrics.valid = false;
-		errMetrics.errorMessage = "Batch size must be greater than 0.";
+		errMetrics.errorMessage = "Batch size must be between 1 and 10,000,000 for CPU.";
+		ui.drawResultsPanel(errMetrics, false);
+		return;
+	}
+
+	// 4. Get runs count
+	int numberOfRuns = ui.getRunsCount();
+	if (numberOfRuns <= 0) {
+		GPUMetrics errMetrics = {};
+		errMetrics.valid = false;
+		errMetrics.errorMessage = "Runs count must be greater than 0.";
 		ui.drawResultsPanel(errMetrics, false);
 		return;
 	}
@@ -263,32 +313,41 @@ void AppController::onRunHashCPU()
 	memset(outBuffer, 0, totalOutputSize);
 
 	// 6. Start timer for batch processing
-	auto batchStartTime = std::chrono::steady_clock::now();
-	int cpuErr = mcm_cpu_sha256_hash_batch(inBuffer, inlen, outBuffer, (SHA_WORD)n_batch);
-	auto batchEndTime = std::chrono::steady_clock::now();
-	double batchTimeMs = std::chrono::duration<double, std::milli>(batchEndTime - batchStartTime).count();
-
-	// Check for CPU errors
-	if (cpuErr != 0) {
-		free(inBuffer);
-		free(outBuffer);
-		GPUMetrics errMetrics = {};
-		errMetrics.valid = false;
-		errMetrics.errorMessage = "CPU SHA256 batch processing failed.";
-		ui.drawResultsPanel(errMetrics, false);
-		return;
-	}
-
-	// 7. Single-hash timing for comparison (n_batch=1)
-	BYTE* singleOutBuffer = (BYTE*)malloc(SHA256_DIGEST_SIZE);
-	double singleTimeMs = 0.0;
-	if (singleOutBuffer) {
-		memset(singleOutBuffer, 0, SHA256_DIGEST_SIZE);
-		auto singleStartTime = std::chrono::steady_clock::now();
-		mcm_cpu_sha256_hash_batch(inBuffer, inlen, singleOutBuffer, 1);
-		auto singleEndTime = std::chrono::steady_clock::now();
-		singleTimeMs = std::chrono::duration<double, std::milli>(singleEndTime - singleStartTime).count();
-		free(singleOutBuffer);
+ 
+	int cpuErr = 0;
+	std::vector<RunMeasurement> runsList;
+	double totalBatchTimeMs = 0.0;
+	double totalSingleTimeMs = 0.0;
+ 
+	for (int r = 1; r <= numberOfRuns; ++r) {
+		// Time the batch hash on CPU
+		auto batchStartTime = std::chrono::steady_clock::now();
+		cpuErr = mcm_cpu_sha256_hash_batch(inBuffer, inlen, outBuffer, (SHA_WORD)n_batch);
+		auto batchEndTime = std::chrono::steady_clock::now();
+		double batchTimeMs = std::chrono::duration<double, std::milli>(batchEndTime - batchStartTime).count();
+ 
+		if (cpuErr != 0) {
+			break;
+		}
+ 
+		// Time the single-hash on CPU
+		BYTE* singleOutBuffer = (BYTE*)malloc(SHA256_DIGEST_SIZE);
+		double singleTimeMs = 0.0;
+		if (singleOutBuffer) {
+			memset(singleOutBuffer, 0, SHA256_DIGEST_SIZE);
+			auto singleStartTime = std::chrono::steady_clock::now();
+			mcm_cpu_sha256_hash_batch(inBuffer, inlen, singleOutBuffer, 1);
+			auto singleEndTime = std::chrono::steady_clock::now();
+			singleTimeMs = std::chrono::duration<double, std::milli>(singleEndTime - singleStartTime).count();
+			free(singleOutBuffer);
+		}
+ 
+		double rate = (batchTimeMs > 0.0) ? (n_batch / (batchTimeMs / 1000.0)) : 0.0;
+		RunMeasurement measurement = { r, singleTimeMs, batchTimeMs, batchTimeMs, rate };
+		runsList.push_back(measurement);
+ 
+		totalBatchTimeMs += batchTimeMs;
+		totalSingleTimeMs += singleTimeMs;
 	}
 
 	// 8. Extract sample hashes
@@ -312,19 +371,21 @@ void AppController::onRunHashCPU()
 	}
 
 	// 9. Build metrics (CPU-specific: skip power metrics, use timing only)
-	size_t totalDataProcessed = (size_t)(inlen + 4) * n_batch;
+	size_t totalDataProcessed = (size_t)(inlen + 4) * n_batch * numberOfRuns;
 	GPUMetrics result = {};
 	result.valid = true;
 	result.batchSize = n_batch;
 	result.sampleHashes = sampleHashes;
-	result.singleHashTimeMs = singleTimeMs;
-	result.batchHashTimeMs = batchTimeMs;
-	result.executionTime = batchTimeMs / 1000.0; // Convert to seconds
-	result.throughput = (totalDataProcessed > 0 && batchTimeMs > 0.0) 
-		? (totalDataProcessed / (1024.0 * 1024.0)) / (batchTimeMs / 1000.0)
+	result.hashResult = sampleHashes.empty() ? "" : sampleHashes[0].second;
+	result.singleHashTimeMs = totalSingleTimeMs / numberOfRuns;
+	result.batchHashTimeMs = totalBatchTimeMs / numberOfRuns;
+	result.executionTime = totalBatchTimeMs / 1000.0; // Convert to seconds
+	result.throughput = (totalDataProcessed > 0 && totalBatchTimeMs > 0.0) 
+		? (totalDataProcessed / (1024.0 * 1024.0)) / (totalBatchTimeMs / 1000.0)
 		: 0.0;
 	result.avgPowerDraw = 0.0; // CPU power not measured
 	result.totalEnergy = 0.0;  // CPU energy not measured
+	result.runs = runsList;
 	result.errorMessage = "";
 
 	// 10. Display results
