@@ -60,10 +60,12 @@ void CmdUI::drawResultsPanel(const GPUMetrics& metrics, bool isGPU)
 			gpuMetrics = metrics;
 			hasGpuMetrics = true;
 			gpuStatusMsg = "";
+			gpuScrollOffset = 0;  // Always start at the top when new results arrive
 		} else {
 			cpuMetrics = metrics;
 			hasCpuMetrics = true;
 			cpuStatusMsg = "";
+			cpuScrollOffset = 0;  // Always start at the top when new results arrive
 		}
 	}
 	if (redrawTrigger) {
@@ -162,6 +164,7 @@ void CmdUI::runEventLoop(UIEventCallback callback)
 	Component input_text = Input(&textInputStr, "abc");
 	Component input_batch = Input(&batchSizeStr, "100000");
 	Component input_runs = Input(&runsCountStr, "10");
+	constexpr int kVisibleRunRows = 7;
 
 	// Setup buttons
 	Component btn_gpu = Button("Run Hash (GPU)", [&]() {
@@ -311,11 +314,8 @@ void CmdUI::runEventLoop(UIEventCallback callback)
 			tData.push_back({"Run", "Single (ms)", "Batch (ms)", "Runtime (ms)", "Rate"});
 			
 			int totalRuns = (int)gpuMetrics.runs.size();
-			int startIndex = gpuScrollOffset;
-			int visibleCount = 8;
-			if (startIndex + visibleCount > totalRuns) {
-				startIndex = std::max(0, totalRuns - visibleCount);
-			}
+			int visibleCount = std::min(totalRuns, kVisibleRunRows);  // Keep compact so summary always fits
+			int startIndex = std::min(gpuScrollOffset, std::max(0, totalRuns - visibleCount));
 			
 			for (int i = startIndex; i < std::min(totalRuns, startIndex + visibleCount); ++i) {
 				const auto& r = gpuMetrics.runs[i];
@@ -405,11 +405,8 @@ void CmdUI::runEventLoop(UIEventCallback callback)
 			tData.push_back({"Run", "Single (ms)", "Batch (ms)", "Runtime (ms)", "Rate"});
 			
 			int totalRuns = (int)cpuMetrics.runs.size();
-			int startIndex = cpuScrollOffset;
-			int visibleCount = 8;
-			if (startIndex + visibleCount > totalRuns) {
-				startIndex = std::max(0, totalRuns - visibleCount);
-			}
+			int visibleCount = std::min(totalRuns, kVisibleRunRows);  // Keep compact so summary always fits
+			int startIndex = std::min(cpuScrollOffset, std::max(0, totalRuns - visibleCount));
 			
 			for (int i = startIndex; i < std::min(totalRuns, startIndex + visibleCount); ++i) {
 				const auto& r = cpuMetrics.runs[i];
@@ -526,7 +523,7 @@ void CmdUI::runEventLoop(UIEventCallback callback)
 						std::lock_guard<std::mutex> lock(metricsMutex);
 						totalRuns = (int)gpuMetrics.runs.size();
 					}
-					int maxOffset = std::max(0, totalRuns - 8);
+					int maxOffset = std::max(0, totalRuns - kVisibleRunRows);
 					gpuScrollOffset = std::min(maxOffset, gpuScrollOffset + 1);
 				} else {
 					int totalRuns = 0;
@@ -534,7 +531,7 @@ void CmdUI::runEventLoop(UIEventCallback callback)
 						std::lock_guard<std::mutex> lock(metricsMutex);
 						totalRuns = (int)cpuMetrics.runs.size();
 					}
-					int maxOffset = std::max(0, totalRuns - 8);
+					int maxOffset = std::max(0, totalRuns - kVisibleRunRows);
 					cpuScrollOffset = std::min(maxOffset, cpuScrollOffset + 1);
 				}
 				if (redrawTrigger) redrawTrigger();
@@ -559,7 +556,7 @@ void CmdUI::runEventLoop(UIEventCallback callback)
 						std::lock_guard<std::mutex> lock(metricsMutex);
 						totalRuns = (int)gpuMetrics.runs.size();
 					}
-					int maxOffset = std::max(0, totalRuns - 8);
+					int maxOffset = std::max(0, totalRuns - kVisibleRunRows);
 					gpuScrollOffset = std::min(maxOffset, gpuScrollOffset + 1);
 				} else {
 					int totalRuns = 0;
@@ -567,7 +564,7 @@ void CmdUI::runEventLoop(UIEventCallback callback)
 						std::lock_guard<std::mutex> lock(metricsMutex);
 						totalRuns = (int)cpuMetrics.runs.size();
 					}
-					int maxOffset = std::max(0, totalRuns - 8);
+					int maxOffset = std::max(0, totalRuns - kVisibleRunRows);
 					cpuScrollOffset = std::min(maxOffset, cpuScrollOffset + 1);
 				}
 				if (redrawTrigger) redrawTrigger();
