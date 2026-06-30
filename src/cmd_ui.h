@@ -86,4 +86,10 @@ private:
 
 	// Last mouse cursor X coordinate
 	int lastMouseX;
+
+	// Clipboard feedback message (shown briefly after copy)
+	std::string clipboardMsg;
+
+	// Build plain-text export of all results for clipboard
+	std::string buildClipboardText() const;
 };
