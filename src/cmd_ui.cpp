@@ -42,6 +42,19 @@ void disableWindowsCtrlCControlEvent()
 	mode &= ~ENABLE_PROCESSED_INPUT;
 	SetConsoleMode(stdinHandle, mode);
 }
+
+bool copyToClipboard(const std::string& text)
+{
+	if (!OpenClipboard(nullptr)) return false;
+	EmptyClipboard();
+	HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, text.size() + 1);
+	if (!hMem) { CloseClipboard(); return false; }
+	memcpy(GlobalLock(hMem), text.c_str(), text.size() + 1);
+	GlobalUnlock(hMem);
+	SetClipboardData(CF_TEXT, hMem);
+	CloseClipboard();
+	return true;
+}
 }
 #endif
 
@@ -61,6 +74,7 @@ CmdUI::CmdUI()
 	, gpuScrollOffset(0)
 	, cpuScrollOffset(0)
 	, lastMouseX(0)
+	, clipboardMsg("")
 {
 }
 
@@ -181,6 +195,99 @@ void CmdUI::setGPUInfo(const GPUDeviceInfo& info)
 	gpuInfo = info;
 }
 
+std::string CmdUI::buildClipboardText() const
+{
+	auto fmtRate = [](double rate) -> std::string {
+		if (rate >= 1e9) return std::to_string(rate / 1e9).substr(0, 5) + " GH/s";
+		if (rate >= 1e6) return std::to_string(rate / 1e6).substr(0, 5) + " MH/s";
+		if (rate >= 1e3) return std::to_string(rate / 1e3).substr(0, 5) + " KH/s";
+		return std::to_string(rate).substr(0, 5) + " H/s";
+	};
+
+	std::ostringstream ss;
+	ss << "SHA256 CUDA & CPU BENCHMARK RESULTS\n";
+	ss << "=====================================\n\n";
+
+	// Input parameters
+	ss << "[Parameters]\n";
+	ss << "  Text:       " << textInputStr << "\n";
+	ss << "  Batch Size: " << batchSizeStr << "\n";
+	ss << "  Runs:       " << runsCountStr << "\n\n";
+
+	// GPU results
+	ss << "[GPU Results]\n";
+	if (hasGpuMetrics && gpuMetrics.valid) {
+		ss << "  Hashes Computed: " << gpuMetrics.batchSize << "\n";
+		ss << "  Hash:            " << gpuMetrics.hashResult << "\n";
+		ss << "  " << std::left
+		   << std::setw(6)  << "Run"
+		   << std::setw(14) << "Single (ms)"
+		   << std::setw(14) << "Batch (ms)"
+		   << std::setw(14) << "Runtime (ms)"
+		   << "Rate\n";
+		ss << "  " << std::string(62, '-') << "\n";
+		double avgSingle = 0, avgBatch = 0, avgRuntime = 0, avgRate = 0, totalRuntime = 0;
+		for (const auto& r : gpuMetrics.runs) {
+			ss << "  " << std::left
+			   << std::setw(6)  << r.runNumber
+			   << std::setw(14) << std::to_string(r.singleMs).substr(0, 7)
+			   << std::setw(14) << std::to_string(r.batchMs).substr(0, 7)
+			   << std::setw(14) << std::to_string(r.runtimeMs).substr(0, 7)
+			   << fmtRate(r.rate) << "\n";
+			avgSingle += r.singleMs; avgBatch += r.batchMs;
+			avgRuntime += r.runtimeMs; avgRate += r.rate;
+			totalRuntime += r.runtimeMs;
+		}
+		size_t n = gpuMetrics.runs.size();
+		if (n > 0) { avgSingle /= n; avgBatch /= n; avgRuntime /= n; avgRate /= n; }
+		ss << "  " << std::string(62, '-') << "\n";
+		ss << "  Average:    Single=" << std::to_string(avgSingle).substr(0, 7)
+		   << " ms  Batch=" << std::to_string(avgBatch).substr(0, 7)
+		   << " ms  Runtime=" << std::to_string(avgRuntime).substr(0, 7)
+		   << " ms  Rate=" << fmtRate(avgRate) << "\n";
+		ss << "  Total Time: " << std::to_string(totalRuntime).substr(0, 7) << " ms\n";
+	} else {
+		ss << "  No GPU results available.\n";
+	}
+
+	ss << "\n[CPU Results]\n";
+	if (hasCpuMetrics && cpuMetrics.valid) {
+		ss << "  Hashes Computed: " << cpuMetrics.batchSize << "\n";
+		ss << "  Hash:            " << cpuMetrics.hashResult << "\n";
+		ss << "  " << std::left
+		   << std::setw(6)  << "Run"
+		   << std::setw(14) << "Single (ms)"
+		   << std::setw(14) << "Batch (ms)"
+		   << std::setw(14) << "Runtime (ms)"
+		   << "Rate\n";
+		ss << "  " << std::string(62, '-') << "\n";
+		double avgSingle = 0, avgBatch = 0, avgRuntime = 0, avgRate = 0, totalRuntime = 0;
+		for (const auto& r : cpuMetrics.runs) {
+			ss << "  " << std::left
+			   << std::setw(6)  << r.runNumber
+			   << std::setw(14) << std::to_string(r.singleMs).substr(0, 7)
+			   << std::setw(14) << std::to_string(r.batchMs).substr(0, 7)
+			   << std::setw(14) << std::to_string(r.runtimeMs).substr(0, 7)
+			   << fmtRate(r.rate) << "\n";
+			avgSingle += r.singleMs; avgBatch += r.batchMs;
+			avgRuntime += r.runtimeMs; avgRate += r.rate;
+			totalRuntime += r.runtimeMs;
+		}
+		size_t n = cpuMetrics.runs.size();
+		if (n > 0) { avgSingle /= n; avgBatch /= n; avgRuntime /= n; avgRate /= n; }
+		ss << "  " << std::string(62, '-') << "\n";
+		ss << "  Average:    Single=" << std::to_string(avgSingle).substr(0, 7)
+		   << " ms  Batch=" << std::to_string(avgBatch).substr(0, 7)
+		   << " ms  Runtime=" << std::to_string(avgRuntime).substr(0, 7)
+		   << " ms  Rate=" << fmtRate(avgRate) << "\n";
+		ss << "  Total Time: " << std::to_string(totalRuntime).substr(0, 7) << " ms\n";
+	} else {
+		ss << "  No CPU results available.\n";
+	}
+
+	return ss.str();
+}
+
 void CmdUI::runEventLoop(UIEventCallback callback)
 {
 	using namespace ftxui;
@@ -228,6 +335,29 @@ void CmdUI::runEventLoop(UIEventCallback callback)
 		callback(UIEvent::CLEAR_CLICKED);
 	});
 
+	Component btn_copy = Button("Copy Results", [&]() {
+		std::string txt;
+		{
+			std::lock_guard<std::mutex> lock(metricsMutex);
+			txt = buildClipboardText();
+		}
+		bool ok = copyToClipboard(txt);
+		{
+			std::lock_guard<std::mutex> lock(metricsMutex);
+			clipboardMsg = ok ? "Copied to clipboard!" : "Copy failed.";
+		}
+		if (redrawTrigger) redrawTrigger();
+		// Auto-clear the message after 2 seconds
+		std::thread([this]() {
+			std::this_thread::sleep_for(std::chrono::seconds(2));
+			{
+				std::lock_guard<std::mutex> lock(metricsMutex);
+				clipboardMsg = "";
+			}
+			if (redrawTrigger) redrawTrigger();
+		}).detach();
+	});
+
 	Component btn_quit = Button("Quit Application", [&]() {
 		screen.Exit();
 		callback(UIEvent::QUIT);
@@ -244,6 +374,7 @@ void CmdUI::runEventLoop(UIEventCallback callback)
 		btn_gpu,
 		btn_cpu,
 		btn_clear,
+		btn_copy,
 		btn_quit,
 	});
 
@@ -297,6 +428,10 @@ void CmdUI::runEventLoop(UIEventCallback callback)
 				disableFields ? (isCpuRunning ? text("[ Running CPU... ]") | bold | color(Color::Yellow) : text("[ Run Hash (CPU) ]") | dim) : btn_cpu->Render(),
 				text("  "),
 				disableFields ? text("[ Clear Results ]") | dim : btn_clear->Render(),
+				text("  "),
+				btn_copy->Render() | color(Color::Cyan),
+				text("  "),
+				clipboardMsg.empty() ? text("") : (text(clipboardMsg) | bold | color(Color::GreenLight)),
 				text("  "),
 				btn_quit->Render(),
 			}),
