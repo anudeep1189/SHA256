@@ -25,8 +25,8 @@ GPU-accelerated SHA-256 hashing implemented in CUDA C++, with an interactive ter
 | **GPU** | NVIDIA GPU, Turing (sm_75) or newer | RTX 40xx (Ada Lovelace, sm_89) |
 | **NVIDIA Driver** | ≥ 576.x (CUDA 13.x compatible) | Latest |
 | **CUDA Toolkit** | 13.3 | 13.3 (V13.3.33) |
-| **Visual Studio** | 2022 with MSVC v143+ | VS 2022 v18 (v145 toolset) |
-| **CMake** | 3.28+ (for FTXUI rebuild only) | Bundled with VS 2022 |
+| **Visual Studio** | 2026 with MSVC v143+ | VS 2026 v18 (v145/v146 toolset) |
+| **CMake** | 3.28+ (for FTXUI rebuild only) | Bundled with VS 2026 |
 | **Disk Space** | ~2 GB (Debug + Release) | — |
 | **RAM** | 8 GB | 16 GB recommended |
 
@@ -41,9 +41,9 @@ GPU-accelerated SHA-256 hashing implemented in CUDA C++, with an interactive ter
 | Component | Technology | Version |
 |---|---|---|
 | **GPU Compute** | NVIDIA CUDA | 13.3 |
-| **Host Compiler** | MSVC (C++17) | v145 (VS 2022) |
+| **Host Compiler** | MSVC (C++17) | v145 (VS 2026) |
 | **CUDA Compiler** | `nvcc` | V13.3.33 |
-| **Build System** | MSBuild (`.vcxproj`) | VS 2022 |
+| **Build System** | MSBuild (`.vcxproj`) | VS 2026 |
 | **Language Standard** | C++17 | `/std:c++17` |
 
 ### CUDA Runtime Libraries
@@ -72,6 +72,87 @@ GPU-accelerated SHA-256 hashing implemented in CUDA C++, with an interactive ter
 `kernel32`, `user32`, `gdi32`, `winspool`, `comdlg32`, `advapi32`, `shell32`, `ole32`, `oleaut32`, `uuid`, `odbc32`, `odbccp32`
 
 ---
+
+## 2b. Runtime Distribution Requirements
+
+> This section answers: **"What does a user need installed to run SHA256.exe?"**
+
+### What is already baked into the exe (no install needed)
+
+| Component | How | Notes |
+|---|---|---|
+| CUDA runtime | `cudart_static.lib` — statically linked | No CUDA Toolkit install required |
+| FTXUI (screen/dom/component) | Static `.lib` files | No separate install |
+| GPU kernels | Compiled into `.nv_fatb` section | Covers sm_75 → sm_121 |
+| Windows system DLLs | Part of OS | Always present on Win10/11 |
+
+### What the user MUST have installed
+
+| Dependency | Supplied by | Required? |
+|---|---|---|
+| **NVIDIA GPU Driver** | NVIDIA (auto-installed with GPU) | ✅ Required — provides `nvml.dll` |
+| **Visual C++ 2022 Redistributable** | Microsoft | ✅ Required — provides `MSVCP140.dll`, `VCRUNTIME140.dll` |
+
+> **Note:** The VC++ Redistributable is already present on most Windows machines (it is installed by VS 2026, many games, and countless apps). If missing, Windows will show a *"VCRUNTIME140.dll not found"* error at launch.
+
+### How to include this information when creating a release
+
+**Option 1 — Bundle the Redistributable installer (Recommended)**
+
+Download and include in your release package:
+```
+https://aka.ms/vs/17/release/vc_redist.x64.exe   (~25 MB)
+```
+Add a `README.txt` in the release folder:
+```
+SHA256 CUDA Hasher - Release Package
+=====================================
+Requirements:
+  1. NVIDIA GPU (Turing / RTX 2060+ or newer)
+  2. NVIDIA GPU Driver (latest recommended)
+  3. Visual C++ 2022 Redistributable:
+     Run vc_redist.x64.exe if the app fails to start.
+
+Files:
+  SHA256.exe         - Main application
+  vc_redist.x64.exe  - VC++ Runtime (install if needed)
+```
+
+**Option 2 — Add a Windows Version Resource to the exe**
+
+A `.rc` resource file embeds dependency metadata visible in **File → Properties → Details** in Explorer. Example `SHA256.rc`:
+```rc
+VS_VERSION_INFO VERSIONINFO
+  FILEVERSION    1,0,0,0
+  PRODUCTVERSION 1,0,0,0
+  FILEFLAGSMASK  0x3fL
+  FILEFLAGS      0x0L
+  FILEOS         VOS_NT_WINDOWS32
+  FILETYPE       VFT_APP
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904b0"
+    BEGIN
+      VALUE "CompanyName",      "IITJ MTech"
+      VALUE "FileDescription",  "SHA256 CUDA & CPU Hasher"
+      VALUE "FileVersion",      "1.0.0.0"
+      VALUE "ProductName",      "SHA256 CUDA Hasher"
+      VALUE "ProductVersion",   "1.0.0.0"
+      VALUE "Comments",         "Requires: NVIDIA GPU Driver + VC++ 2022 Redistributable"
+      VALUE "LegalCopyright",   "Copyright 2026"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x409, 1200
+  END
+END
+```
+Add `SHA256.rc` to the project via **Add → Resource → Version**. This shows up in Windows Explorer under the Details tab.
+
+---
+
 
 ## 3. Repository Structure
 
@@ -119,12 +200,12 @@ SHA256/
    # Expected: Cuda compilation tools, release 13.3, V13.3.33
    ```
 
-### Step 2 — Install Visual Studio 2022
+### Step 2 — Install Visual Studio 2026
 
 1. Download from: https://visualstudio.microsoft.com/downloads/
 2. In the installer, select the **"Desktop development with C++"** workload
 3. Ensure the following individual components are checked:
-   - MSVC v143 (or v145) build tools
+   - MSVC v143 (or v145/v146) build tools
    - Windows 10/11 SDK
    - CMake tools for Windows (needed to rebuild FTXUI if required)
 
@@ -135,7 +216,7 @@ git clone <repo-url>
 cd SHA256
 ```
 
-Open `SHA256.slnx` in Visual Studio 2022.
+Open `SHA256.slnx` in Visual Studio 2026.
 
 ---
 
@@ -147,7 +228,7 @@ The **Debug** libs must be compiled once before your first Debug build.
 
 ### Option A — Using MSBuild (Recommended, no CMake needed)
 
-Open a **Developer PowerShell for VS 2022** and run:
+Open a **Developer PowerShell for VS 2026** and run:
 
 ```powershell
 cd C:\path\to\SHA256
@@ -170,7 +251,7 @@ thirdparty\ftxui\build\Debug\ftxui-component.lib
 
 ```powershell
 cd thirdparty\ftxui
-cmake -S . -B build -G "Visual Studio 18 2022" -A x64
+cmake -S . -B build -G "Visual Studio 18 2026" -A x64
 cmake --build build --config Debug
 cmake --build build --config Release
 ```
@@ -181,7 +262,7 @@ cmake --build build --config Release
 
 ## 6. Building the Project
 
-### Using Visual Studio 2022 (GUI)
+### Using Visual Studio 2026 (GUI)
 
 1. Open `SHA256.slnx`
 2. Select the desired configuration from the toolbar:
@@ -194,7 +275,7 @@ cmake --build build --config Release
 
 ### Using MSBuild (Command Line)
 
-Open **Developer PowerShell for VS 2022**:
+Open **Developer PowerShell for VS 2026**:
 
 ```powershell
 $msbuild = "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\amd64\MSBuild.exe"
@@ -263,7 +344,7 @@ To verify what your local nvcc supports:
 
 ### `msbuild` not recognized
 
-You must use a **Developer PowerShell / Developer Command Prompt for VS 2022**, or provide the full path to `MSBuild.exe`:
+You must use a **Developer PowerShell / Developer Command Prompt for VS 2026**, or provide the full path to `MSBuild.exe`:
 
 ```powershell
 "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\amd64\MSBuild.exe"
