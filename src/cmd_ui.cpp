@@ -419,8 +419,17 @@ void CmdUI::runEventLoop(UIEventCallback callback)
 			text("  • Max CPU Batch Size: 10,000,000") | color(Color::Yellow),
 		}));
 
+		Element gpu_model_el;
+		if (gpuInfo.valid) {
+			gpu_model_el = text("GPU Model: " + gpuInfo.deviceName) | color(Color::Yellow);
+		} else if (!gpuInfo.deviceName.empty()) {
+			gpu_model_el = text("GPU Model: " + gpuInfo.deviceName + " [UNSUPPORTED: Requires Turing CC 7.5+]") | bold | color(Color::Red);
+		} else {
+			gpu_model_el = text("GPU Model: None detected / CUDA error") | color(Color::Red);
+		}
+
 		auto execution_box = window(text("2. Execution Control") | bold | color(Color::Cyan), vbox({
-			text("GPU Model: " + (gpuInfo.valid ? gpuInfo.deviceName : "N/A (NVML not initialized/found)")) | color(Color::Yellow),
+			gpu_model_el,
 			separator(),
 			hbox({
 				disableFields ? (isGpuRunning ? text("[ Running GPU... ]") | bold | color(Color::Yellow) : text("[ Run Hash (GPU) ]") | dim) : btn_gpu->Render(),
@@ -551,6 +560,13 @@ void CmdUI::runEventLoop(UIEventCallback callback)
 				text("Summary:") | bold,
 				sum_t.Render(),
 			});
+		} else if (hasGpuMetrics && !gpuMetrics.valid) {
+			gpu_panel = vbox({
+				text("RESULTS - GPU") | bold | color(Color::Green),
+				separator(),
+				text("ERROR:") | bold | color(Color::Red),
+				paragraph(gpuMetrics.errorMessage) | color(Color::Red),
+			});
 		} else {
 			gpu_panel = vbox({
 				text("RESULTS - GPU") | bold | color(Color::Green),
@@ -641,6 +657,13 @@ void CmdUI::runEventLoop(UIEventCallback callback)
 				separator(),
 				text("Summary:") | bold,
 				sum_t.Render(),
+			});
+		} else if (hasCpuMetrics && !cpuMetrics.valid) {
+			cpu_panel = vbox({
+				text("RESULTS - CPU") | bold | color(Color::Yellow),
+				separator(),
+				text("ERROR:") | bold | color(Color::Red),
+				paragraph(cpuMetrics.errorMessage) | color(Color::Red),
 			});
 		} else {
 			cpu_panel = vbox({
