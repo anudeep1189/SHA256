@@ -364,4 +364,34 @@ This is a **pre-existing, non-fatal warning** in `sha256_cpu.cu` related to bit-
 
 ---
 
-*Last updated: 2026-06-30*
+*Last updated: 2026-07-01*
+
+---
+
+## 9. Multi-Target Build & Launcher Build (Legacy/Modern)
+
+To support both legacy GPUs (e.g., Pascal/Maxwell architectures using CUDA 12.x/12.9) and modern GPUs (using CUDA 13.3), the project has a multi-target build script that builds both versions and bundles them with a dynamic launcher.
+
+### Prerequisites
+
+To execute the multi-target build, your system must have:
+1. **CUDA Toolkit 12.9** and **CUDA Toolkit 13.3** installed in their default locations.
+2. **Visual Studio 2026** (or similar) with both the **MSVC v143** and **MSVC v145** toolsets installed (needed to avoid compiler front-end parser crashes on legacy targets).
+
+### Multi-Target Build Procedure
+
+1. Open a PowerShell window.
+2. Navigate to the repository root directory.
+3. Run the automated packaging script:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\build_all.ps1
+   ```
+
+### Output & Distribution Folder
+
+After a successful run of `build_all.ps1`, the `Release_Package/` folder is populated with:
+- `SHA256.exe` (The dynamic launcher: queries the system GPU's compute capability and runs the correct binary).
+- `SHA256_Modern.exe` (Optimized CUDA 13.3 build, CC >= 7.5).
+- `SHA256_Legacy.exe` (Maximum compatibility CUDA 12.x build, CC < 7.5).
+- `README.txt` (User installation and running instruction guide).
+

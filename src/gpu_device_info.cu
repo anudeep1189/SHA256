@@ -73,6 +73,13 @@ GPUDeviceInfo queryGPUDevice()
 	cudaMemGetInfo(&freeMem, &totalMem);
 	info.freeMemory = freeMem;
 
+	// Validate minimum supported GPU architecture (Turing, Compute Capability 7.5+)
+	if (prop.major < 7 || (prop.major == 7 && prop.minor < 5)) {
+		info.valid = false;
+		info.errorMessage = "GPU '" + std::string(prop.name) + "' (Compute Capability " + std::to_string(prop.major) + "." + std::to_string(prop.minor) + ") is not supported. The compiled binary requires Turing architecture (Compute Capability 7.5) or newer.";
+		return info;
+	}
+
 	info.valid = true;
 	return info;
 }
@@ -85,7 +92,7 @@ bool validateBatchCount(const GPUDeviceInfo& info, int n_batch, size_t inputLen,
 	}
 
 	if (!info.valid) {
-		errorMessage = "No valid GPU device available.";
+		errorMessage = "No valid GPU device available. Error: " + info.errorMessage;
 		return false;
 	}
 

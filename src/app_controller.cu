@@ -109,6 +109,16 @@ void AppController::onRunHashGPU()
 		return;
 	}
 
+	// 4b. Validate GPU device capabilities and memory constraints
+	std::string gpuValidationError;
+	if (!validateBatchCount(gpuInfo, n_batch, inputData.size(), gpuValidationError)) {
+		GPUMetrics errMetrics = {};
+		errMetrics.valid = false;
+		errMetrics.errorMessage = gpuValidationError;
+		ui.drawResultsPanel(errMetrics, true);
+		return;
+	}
+
 	// 5. Prepare single-copy input buffer
 	SHA_WORD inlen = (SHA_WORD)inputData.size();
 	BYTE* inBuffer = (BYTE*)malloc(inlen);
