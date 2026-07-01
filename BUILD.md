@@ -22,15 +22,15 @@ GPU-accelerated SHA-256 hashing implemented in CUDA C++, with an interactive ter
 | Requirement | Minimum | Tested With |
 |---|---|---|
 | **OS** | Windows 10 (64-bit) | Windows 11 |
-| **GPU** | NVIDIA GPU, Turing (sm_75) or newer | RTX 40xx (Ada Lovelace, sm_89) |
-| **NVIDIA Driver** | ≥ 576.x (CUDA 13.x compatible) | Latest |
-| **CUDA Toolkit** | 13.3 | 13.3 (V13.3.33) |
-| **Visual Studio** | 2026 with MSVC v143+ | VS 2026 v18 (v145/v146 toolset) |
+| **GPU** | NVIDIA GPU: Maxwell (sm_50) or newer (Legacy); Turing (sm_75) or newer (Modern) | RTX 40xx (Ada Lovelace, sm_89) |
+| **NVIDIA Driver** | ≥ 528.x (CUDA 12.x compatible) | Latest |
+| **CUDA Toolkit** | 12.9 (Legacy) & 13.3 (Modern) | 12.9 & 13.3 |
+| **Visual Studio** | 2026 with MSVC v143+ | VS 2026 v18 (v145/v146 toolsets) |
 | **CMake** | 3.28+ (for FTXUI rebuild only) | Bundled with VS 2026 |
 | **Disk Space** | ~2 GB (Debug + Release) | — |
 | **RAM** | 8 GB | 16 GB recommended |
 
-> **Note:** CUDA 13.3 dropped support for Maxwell (sm_5x), Pascal (sm_6x), and Volta (sm_7x) architectures. GPUs older than Turing (GTX 16xx / RTX 20xx) are **not supported**.
+> **Note:** While CUDA 13.3 dropped support for Maxwell (sm_5x), Pascal (sm_6x), and Volta (sm_7x) architectures, the Legacy configuration compiled with CUDA 12.9 preserves compatibility for these older GPUs (e.g. MX150/MX250).
 
 ---
 
@@ -40,9 +40,9 @@ GPU-accelerated SHA-256 hashing implemented in CUDA C++, with an interactive ter
 
 | Component | Technology | Version |
 |---|---|---|
-| **GPU Compute** | NVIDIA CUDA | 13.3 |
-| **Host Compiler** | MSVC (C++17) | v145 (VS 2026) |
-| **CUDA Compiler** | `nvcc` | V13.3.33 |
+| **GPU Compute** | NVIDIA CUDA | 12.9 (Legacy) & 13.3 (Modern) |
+| **Host Compiler** | MSVC (C++17) | v143 (`14.44` for Legacy) / v145 (`14.51` for Modern) |
+| **CUDA Compiler** | `nvcc` | V12.9 / V13.3.33 |
 | **Build System** | MSBuild (`.vcxproj`) | VS 2026 |
 | **Language Standard** | C++17 | `/std:c++17` |
 
@@ -83,7 +83,7 @@ GPU-accelerated SHA-256 hashing implemented in CUDA C++, with an interactive ter
 |---|---|---|
 | CUDA runtime | `cudart_static.lib` — statically linked | No CUDA Toolkit install required |
 | FTXUI (screen/dom/component) | Static `.lib` files | No separate install |
-| GPU kernels | Compiled into `.nv_fatb` section | Covers sm_75 → sm_121 |
+| GPU kernels | Compiled into `.nv_fatb` section | Covers sm_50 → sm_90 (Legacy) / sm_75 → sm_121 (Modern) |
 | Windows system DLLs | Part of OS | Always present on Win10/11 |
 
 ### What the user MUST have installed
@@ -108,13 +108,15 @@ Add a `README.txt` in the release folder:
 SHA256 CUDA Hasher - Release Package
 =====================================
 Requirements:
-  1. NVIDIA GPU (Turing / RTX 2060+ or newer)
+  1. NVIDIA GPU (Maxwell/Pascal or newer)
   2. NVIDIA GPU Driver (latest recommended)
   3. Visual C++ 2022 Redistributable:
      Run vc_redist.x64.exe if the app fails to start.
 
 Files:
-  SHA256.exe         - Main application
+  SHA256.exe         - Smart Launcher
+  SHA256_Modern.exe  - Modern CUDA 13.3 binary
+  SHA256_Legacy.exe  - Legacy CUDA 12.9 binary
   vc_redist.x64.exe  - VC++ Runtime (install if needed)
 ```
 
@@ -281,11 +283,20 @@ Open **Developer PowerShell for VS 2026**:
 $msbuild = "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\amd64\MSBuild.exe"
 $proj    = "C:\path\to\SHA256\SHA256.vcxproj"
 
-# Debug build
+# Debug build (Modern CUDA 13.3)
 & $msbuild $proj /p:Configuration=Debug /p:Platform=x64 /v:minimal
 
-# Release build
-& $msbuild $proj /p:Configuration=Release /p:Platform=x64 /v:minimal
+# Modern Release build (CUDA 13.3, CC 7.5 to 12.1)
+& $msbuild $proj /p:Configuration=Release /p:Platform=x64 /p:CudaVersion=13.3 /t:Rebuild /v:minimal
+
+# Legacy Release build (CUDA 12.9, CC 5.0 to 9.0)
+& $msbuild $proj /p:Configuration=Release /p:Platform=x64 /p:CudaVersion=12.6 /p:CudaToolkitCustomDir="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9" /p:VCToolsVersion=14.44.35207 /t:Rebuild /v:minimal
+```
+
+### Automated Packaging (Recommended)
+To automatically compile both builds (Legacy and Modern), compile the launcher, and prepare the release package:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build_all.ps1
 ```
 
 ---
